@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include "OpenSprinkler.h"
 #include "utils.h"
-#include "server.h"
+#include "server_os.h"
 #include "weather.h"
 
 extern OpenSprinkler os; // OpenSprinkler object
@@ -131,7 +131,7 @@ static void getweather_callback_with_peel_header(char* buffer) {
 }
 
 void GetWeather() {
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 	if(!m_server) {
 		if (os.state!=OS_STATE_CONNECTED || WiFi.status()!=WL_CONNECTED) return;
 	}
