@@ -1,5 +1,5 @@
 /*
-  rf_lora.h - LORA long range driver for OpenSprinkler
+  MirrorLink.h - LORA long range Mirror Link driver for OpenSprinkler
 
   Copyright (C) 2020 Javier Arigita
 
@@ -18,12 +18,12 @@
 */
 
 
-#ifndef _RF_LORA_H
-#define _RF_LORA_H
+#ifndef _MIRRORLINK
+#define _MIRRORLINK
 
-#if defined(ESP32) && defined(LORA_ENABLE)
-void loraInit();
-void loraMain();
-#endif // defined(ESP32) && defined(LORA_ENABLE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+void MirrorLinkInit();
+void MirrorLinkMain();
+#endif // defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
-#endif	// _RF_LORA_H
+#endif	// _MIRRORLINK

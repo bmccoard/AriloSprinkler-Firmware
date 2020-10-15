@@ -28,6 +28,7 @@
 #include "weather.h"
 #include "server_os.h"
 #include "mqtt.h"
+#include "MirrorLink.h"
 
 #if defined(ARDUINO)
 	EthernetServer *m_server = NULL;
@@ -1009,8 +1010,9 @@ void do_loop()
 			push_message(NOTIFY_REBOOT);
 		}
 
-		// LORA module transceiver state machine
-		#if defined(ESP32) && defined(LORA_ENABLE)
+		// MirrorLink LORA module transceiver state machine
+		#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		MirrorLinkMain();
 		#endif
 
 	}
