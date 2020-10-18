@@ -41,17 +41,22 @@
 // BUSY pin:  26
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_DIO2, LORA_BUSY);
 
-// flag to indicate that a packet was received
-volatile bool receivedFlag = false;
+typedef union {
+  uint32_t data;
+  struct {
+    uint8_t mirrorlink_mode : 2;       // Operation mode of the MirrorLink system
+    uint8_t receivedFlag : 1;          // Flag to indicate that a packet was received
+    uint8_t transmittedFlag : 1;       // Flag to indicate that a packet was sent
+    uint8_t enableInterrupt : 1;       // Disable interrupt when it's not needed
+    uint8_t free : 3;                  // Free bits
+  };
+} MirrorLinkStateBitfield;
 
-// flag to indicate that a packet was sent
-volatile bool transmittedFlag = false;
+struct MIRRORLINK {
+  int16_t module_state;           // LORA module state
+  MirrorLinkStateBitfield status; // Bittfield including states as well as several flags
+} MirrorLink;
 
-// disable interrupt when it's not needed
-volatile bool enableInterrupt = true;
-
-// save transmission state between loops
-int transmissionState = ERR_NONE;
 
 // Set RX pin HIGH and TX pin LOW to switch to RECEIVE
 void enableRX(void)
@@ -75,12 +80,12 @@ void enableTX(void)
 //            and MUST NOT have any arguments!
 void setFlagRx(void) {
   // check if the interrupt is enabled
-  if(!enableInterrupt) {
+  if(!MirrorLink.status.enableInterrupt) {
     return;
   }
 
   // we got a packet, set the flag
-  receivedFlag = true;
+  MirrorLink.status.receivedFlag = (uint8_t)true;
 }
 
 // this function is called when a complete packet
@@ -89,16 +94,21 @@ void setFlagRx(void) {
 //            and MUST NOT have any arguments!
 void setFlagTx(void) {
   // check if the interrupt is enabled
-  if(!enableInterrupt) {
+  if(!MirrorLink.status.enableInterrupt) {
     return;
   }
 
   // we sent a packet, set the flag
-  transmittedFlag = true;
+  MirrorLink.status.transmittedFlag = (uint8_t)true;
 }
 
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
+  MirrorLink.module_state = ERR_NONE;
+  MirrorLink.status.receivedFlag = (uint8_t)false;
+  MirrorLink.status.transmittedFlag = (uint8_t)false;
+  MirrorLink.status.enableInterrupt = (uint8_t)true;
+
 	Serial.begin(115200);
 
 	// Configure LORA module pins
@@ -123,12 +133,12 @@ void MirrorLinkInit(void) {
 	// current limit:               60 mA
 	// preamble length:             8 symbols
 	// CRC:                         enabled
-	int state = lora.begin(868.0, 125.0, 7, 5, 0x1424, 0, 8);
-	  if (state == ERR_NONE) {
+	MirrorLink.module_state = lora.begin(868.0, 125.0, 7, 5, 0x1424, 0, 8);
+	  if (MirrorLink.module_state == ERR_NONE) {
     Serial.println(F("success!"));
 	} else {
 		Serial.print(F("failed, code "));
-		Serial.println(state);
+		Serial.println(MirrorLink.module_state);
 	}
 	// eByte E22-900M uses DIO3 to supply the external TCXO
 	if (lora.setTCXO(2.4) == ERR_INVALID_TCXO_VOLTAGE)
@@ -149,13 +159,13 @@ void MirrorLinkInit(void) {
 
 	// you can transmit C-string or Arduino string up to
 	// 256 characters long
-	transmissionState = lora.startTransmit("Hello World!");
+	MirrorLink.module_state = lora.startTransmit("Hello World!");
 
 	// you can also transmit byte array up to 256 bytes long
 	/*
 		byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
 						0x89, 0xAB, 0xCD, 0xEF};
-		state = lora.startTransmit(byteArr, 8);
+		MirrorLink.module_state = lora.startTransmit(byteArr, 8);
 	*/
 #else
 	// set the function that will be called
@@ -167,31 +177,31 @@ void MirrorLinkInit(void) {
 
 	// start listening for LoRa packets
 	Serial.print(F("[SX1262] Starting to listen ... "));
-	state = lora.startReceive();
-	if (state == ERR_NONE) {
+	MirrorLink.module_state = lora.startReceive();
+	if (MirrorLink.module_state == ERR_NONE) {
 		Serial.println(F("success!"));
 	} else {
 		Serial.print(F("failed, code "));
-		Serial.println(state);
+		Serial.println(MirrorLink.module_state);
 		while (true);
 	}
 #endif
 }
 
-// MirrorLink module main function
+// MirrorLink module main function, called once every second
 void MirrorLinkMain(void) {
 // If MirrorLink LORA station is a remote controller
 #if defined(MIRRORLINK_OSREMOTE)
   // check if the previous transmission finished
-  if(transmittedFlag) {
+  if(MirrorLink.status.transmittedFlag) {
     // disable the interrupt service routine while
     // processing the data
-    enableInterrupt = false;
+    MirrorLink.status.enableInterrupt = (uint8_t)false;
 
     // reset flag
-    transmittedFlag = false;
+    MirrorLink.status.transmittedFlag = (uint8_t)false;
 
-    if (transmissionState == ERR_NONE) {
+    if (MirrorLink.module_state == ERR_NONE) {
       // packet was successfully sent
       Serial.println(F("transmission finished!"));
 
@@ -201,7 +211,7 @@ void MirrorLinkMain(void) {
 
     } else {
       Serial.print(F("failed, code "));
-      Serial.println(transmissionState);
+      Serial.println(MirrorLink.module_state);
 
     }
 
@@ -213,40 +223,40 @@ void MirrorLinkMain(void) {
 
     // you can transmit C-string or Arduino string up to
     // 256 characters long
-    transmissionState = lora.startTransmit("Hello World!");
+    MirrorLink.module_state = lora.startTransmit("Hello World!");
 
     // you can also transmit byte array up to 256 bytes long
     /*
       byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
                         0x89, 0xAB, 0xCD, 0xEF};
-      int state = lora.startTransmit(byteArr, 8);
+      MirrorLink.module_state = lora.startTransmit(byteArr, 8);
     */
 
     // we're ready to send more packets,
     // enable interrupt service routine
-    enableInterrupt = true;
+    MirrorLink.status.enableInterrupt = (uint8_t)true;
   }
 #else
   // check if the flag is set
-  if(receivedFlag) {
+  if(MirrorLink.status.receivedFlag) {
     // disable the interrupt service routine while
     // processing the data
-    enableInterrupt = false;
+    MirrorLink.status.enableInterrupt = (uint8_t)false;
 
     // reset flag
-    receivedFlag = false;
+    MirrorLink.status.receivedFlag = (uint8_t)false;
 
     // you can read received data as an Arduino String
     String str;
-    int state = lora.readData(str);
+    MirrorLink.module_state = lora.readData(str);
 
     // you can also read received data as byte array
     /*
       byte byteArr[8];
-      int state = lora.readData(byteArr, 8);
+      MirrorLink.module_state = lora.readData(byteArr, 8);
     */
 
-    if (state == ERR_NONE) {
+    if (MirrorLink.module_state == ERR_NONE) {
       // packet was successfully received
       Serial.println(F("[SX1262] Received packet!"));
 
@@ -264,14 +274,14 @@ void MirrorLinkMain(void) {
       Serial.print(lora.getSNR());
       Serial.println(F(" dB"));
 
-    } else if (state == ERR_CRC_MISMATCH) {
+    } else if (MirrorLink.module_state == ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
       Serial.println(F("CRC error!"));
 
     } else {
       // some other error occurred
       Serial.print(F("failed, code "));
-      Serial.println(state);
+      Serial.println(MirrorLink.module_state);
 
     }
 
@@ -280,7 +290,7 @@ void MirrorLinkMain(void) {
 
     // we're ready to receive more packets,
     // enable interrupt service routine
-    enableInterrupt = true;
+    MirrorLink.status.enableInterrupt = (uint8_t)true;
   }
 #endif
 
