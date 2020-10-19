@@ -61,12 +61,13 @@ typedef union {
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  uint32_t timer;                 // Timer in seconds to control send timing
-  int16_t module_state;           // LORA module state
-  MirrorLinkStateBitfield status; // Bittfield including states as well as several flags
+  uint32_t timer;                          // Timer in seconds to control send timing
+  int16_t module_state;                    // LORA module state
+  MirrorLinkStateBitfield status;          // Bittfield including states as well as several flags
 #if defined(MIRRORLINK_OSREMOTE)
-  uint8_t bufferedCommands;       // Number of buffered commands to be sent
+  uint8_t bufferedCommands;                // Number of buffered commands to be sent
   uint8_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
+  uint8_t bufferIndex;                     // Index of the element in the buffer to be sent
 #endif //MIRRORLINK_OSREMOTE
 } MirrorLink;
 
@@ -127,6 +128,7 @@ void MirrorLinkInit(void) {
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
+  MirrorLink.bufferIndex = 0;
 #endif // defined(MIRRORLINK_OSREMOTE)
 
   // TODO: Change this with flash check of associated adress:
@@ -263,14 +265,30 @@ void MirrorLinkState(void) {
       // If send process if finished
       // empty the command in the buffer
       // change state to receive
-      if (MirrorLink.status.transmittedFlag == (uint8_t)false) {
-#if defined(MIRRORLINK_OSREMOTE)
+      if (MirrorLink.status.transmittedFlag == (uint8_t)true) {
+        // disable the interrupt service routine while
+        // processing the data
+        MirrorLink.status.enableInterrupt = (uint8_t)false;
+        MirrorLink.status.transmittedFlag = (uint8_t)false;
 
+        if (MirrorLink.module_state == ERR_NONE) {
+          // packet was successfully sent
+          Serial.println(F("transmission finished!"));
+
+          // NOTE: when using interrupt-driven transmit method,
+          //       it is not possible to automatically measure
+          //       transmission data rate using getDataRate()
+        } 
+        else {
+          Serial.print(F("failed, code "));
+          Serial.println(MirrorLink.module_state);
+        }
+#if defined(MIRRORLINK_OSREMOTE)
+        MirrorLink.buffer[MirrorLink.bufferIndex] = 0;
 #endif // defined(MIRRORLINK_OSREMOTE)
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+        MirrorLink.status.enableInterrupt = (uint8_t)true;
       }
-      // If send process if finished
-      // change state to receive
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
