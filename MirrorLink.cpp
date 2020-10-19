@@ -34,6 +34,13 @@
 #define LORA_RXEN 13
 #define LORA_TXEN 25
 
+// States of the MirrorLink driver
+#if defined(MIRRORLINK_OSREMOTE)
+enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_BUFFERING, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
+#else
+enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
+#endif
+
 // SX1262 has the following connections:
 // NSS pin:   18
 // DIO1 pin:  33
@@ -42,19 +49,25 @@
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_DIO2, LORA_BUSY);
 
 typedef union {
-  uint32_t data;
+  uint8_t data;
   struct {
-    uint8_t mirrorlink_mode : 2;       // Operation mode of the MirrorLink system
-    uint8_t receivedFlag : 1;          // Flag to indicate that a packet was received
-    uint8_t transmittedFlag : 1;       // Flag to indicate that a packet was sent
-    uint8_t enableInterrupt : 1;       // Disable interrupt when it's not needed
-    uint8_t free : 3;                  // Free bits
+    uint8_t mirrorlinkState : 3;      // Operation mode of the MirrorLink system
+    uint8_t receivedFlag : 1;         // Flag to indicate that a packet was received
+    uint8_t transmittedFlag : 1;      // Flag to indicate that a packet was sent
+    uint8_t enableInterrupt : 1;      // Disable interrupt when it's not needed
+    uint8_t associated : 1;           // Shows if OS device is associated
+    uint8_t free : 1;                 // Free bits
   };
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
+  uint32_t timer;                 // Timer in seconds to control send timing
   int16_t module_state;           // LORA module state
   MirrorLinkStateBitfield status; // Bittfield including states as well as several flags
+#if defined(MIRRORLINK_OSREMOTE)
+  uint8_t bufferedCommands;       // Number of buffered commands to be sent
+  uint8_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
+#endif //MIRRORLINK_OSREMOTE
 } MirrorLink;
 
 
@@ -104,10 +117,20 @@ void setFlagTx(void) {
 
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
+#if !defined(MIRRORLINK_DEBUGRF)
   MirrorLink.module_state = ERR_NONE;
   MirrorLink.status.receivedFlag = (uint8_t)false;
   MirrorLink.status.transmittedFlag = (uint8_t)false;
   MirrorLink.status.enableInterrupt = (uint8_t)true;
+  MirrorLink.status.mirrorlinkState = MIRRORLINK_INIT;
+  MirrorLink.timer = 0;
+#if defined(MIRRORLINK_OSREMOTE)
+  MirrorLink.bufferedCommands = 0;
+  for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
+#endif // defined(MIRRORLINK_OSREMOTE)
+
+  // TODO: Change this with flash check of associated adress:
+  MirrorLink.status.associated = (uint8_t)true;
 
 	Serial.begin(115200);
 
@@ -146,6 +169,7 @@ void MirrorLinkInit(void) {
 		Serial.println(F("Selected TCXO voltage is invalid for this module!"));
 	}
 
+#else
 #if defined(MIRRORLINK_OSREMOTE)
 	// set the function that will be called
 	// when new packet is transmitted
@@ -185,11 +209,139 @@ void MirrorLinkInit(void) {
 		Serial.println(MirrorLink.module_state);
 		while (true);
 	}
-#endif
+#endif // defined(MIRRORLINK_OSREMOTE)
+#endif // defined(MIRRORLINK_DEBUGRF)
 }
 
-// MirrorLink module main function, called once every second
+// MirrorLink module state machine change function, called once every second
+void MirrorLinkState(void) {
+  switch (MirrorLink.status.mirrorlinkState) {
+    // Initial state
+    case MIRRORLINK_INIT:
+#if defined(MIRRORLINK_OSREMOTE)
+      if (MirrorLink.status.associated == (uint8_t)true) {
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+      }
+      else {
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+      }
+#else
+      if (MirrorLink.status.associated == (uint8_t)true) {
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+      }
+      else {
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+      }
+#endif // defined(MIRRORLINK_OSREMOTE)
+      break;
+    // Association state 
+    case MIRRORLINK_ASSOCIATE:
+#if defined(MIRRORLINK_OSREMOTE)
+      if (MirrorLink.status.associated == (uint8_t)true) {
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+      }
+#else
+      if (MirrorLink.status.associated == (uint8_t)true) {
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+      }
+#endif // defined(MIRRORLINK_OSREMOTE)
+      break;
+#if defined(MIRRORLINK_OSREMOTE)
+    // Buffering state
+    case MIRRORLINK_BUFFERING:
+      // If timer to be able to use the channel again empty
+      // AND buffer not empty
+      // change state to send
+      if (  (MirrorLink.timer == 0)
+          &&(MirrorLink.bufferedCommands >= 1)) {
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
+      }
+      break;
+#endif // defined(MIRRORLINK_OSREMOTE)
+    // Send state
+    case MIRRORLINK_SEND:
+      // If send process if finished
+      // empty the command in the buffer
+      // change state to receive
+      if (MirrorLink.status.transmittedFlag == (uint8_t)false) {
+#if defined(MIRRORLINK_OSREMOTE)
+
+#endif // defined(MIRRORLINK_OSREMOTE)
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+      }
+      // If send process if finished
+      // change state to receive
+      break;
+    // Receive state
+    case MIRRORLINK_RECEIVE:
+#if defined(MIRRORLINK_OSREMOTE)
+      // If confirmation of buffer commands received
+      // OR timeout
+      // change state to Buffering
+#else
+      // If commands received
+      // change state to Send
+#endif // defined(MIRRORLINK_OSREMOTE)
+      break;
+  }
+}
+
+// MirrorLink module state maction actions function, called once every second
+void MirrorLinkWork(void) {
+  switch (MirrorLink.status.mirrorlinkState) {
+    // Initial state
+    case MIRRORLINK_INIT:
+      // Do nothing
+      break;
+    // Association state 
+    case MIRRORLINK_ASSOCIATE:
+#if defined(MIRRORLINK_OSREMOTE)
+      // Check if associating beacon answer
+      // Send associating beacon if no answer
+      // Register station ID if answer
+#else
+      // Wait of associating beacon
+      // If reception register remote ID and send association feedback with station ID
+#endif // defined(MIRRORLINK_OSREMOTE)
+      break;
+#if defined(MIRRORLINK_OSREMOTE)
+    // Buffering state
+    case MIRRORLINK_BUFFERING:
+      // Do nothing, commands are getting buffered
+      break;
+#endif // defined(MIRRORLINK_OSREMOTE)
+    // Send state
+    case MIRRORLINK_SEND:
+#if defined(MIRRORLINK_OSREMOTE)
+      // Send buffer
+      // Empty buffer
+      // Calculate idle time until next send period
+#else
+      // 
+#endif // defined(MIRRORLINK_OSREMOTE)
+      break;
+    // Receive state
+    case MIRRORLINK_RECEIVE:
+#if defined(MIRRORLINK_OSREMOTE)
+      // 
+#else
+      // 
+#endif // defined(MIRRORLINK_OSREMOTE)
+      break;
+  }
+}
+
+// MirrorLink module function, called once every second
 void MirrorLinkMain(void) {
+#if !defined(MIRRORLINK_DEBUGRF)
+
+  // State changes
+  MirrorLinkState();
+
+  // State actions
+  MirrorLinkWork();
+
+#else
 // If MirrorLink LORA station is a remote controller
 #if defined(MIRRORLINK_OSREMOTE)
   // check if the previous transmission finished
@@ -292,7 +444,8 @@ void MirrorLinkMain(void) {
     // enable interrupt service routine
     MirrorLink.status.enableInterrupt = (uint8_t)true;
   }
-#endif
+#endif // defined(MIRRORLINK_OSREMOTE)
+#endif // // defined(MIRRORLINK_DEBUGRF)
 
 }
 

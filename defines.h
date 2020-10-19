@@ -425,9 +425,7 @@ enum {
 	#define ON_BOARD_GPIN_LIST   {255,255,255,255,255,255,255,255} //  ESP32 on board gpins to be usead as sections, 255 - pin not defined
   	#define STATION_LOGIC  		 0 // GPIO logic ex. for relays conneted to grand 0 meens ON
 
-	// Config defines (to be removed)
 	#define MIRRORLINK_ENABLE    // If defined, MirrorLink LORA module present
-	//#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
 
 #elif defined(OSPI) // for OSPi
 
