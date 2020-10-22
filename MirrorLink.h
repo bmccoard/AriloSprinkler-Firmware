@@ -17,19 +17,27 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-
 #ifndef _MIRRORLINK
 #define _MIRRORLINK
 
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+#include "utils.h"
 
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 // Config defines
-#define MIRRORLINK_OSREMOTE         // If defined, MirrorLink LORA device is a OS remote, not OS station
 //#define MIRRORLINK_DEBUGRF        // If defined, RF send/receive test between remote and station is performed
 #define MIRRORLINK_DUTYCYCLE 100    // Maximum duty cycle allowed in tenths of percentage, default 100 = 10%
 #if defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_BUFFERLENGTH 10  // Maximum command buffer length
 #endif // defined(MIRRORLINK_OSREMOTE)
+
+enum {
+  ML_TESTSTATION = 0,// read-only (ro)
+	ML_MAX_CMD // total number of integer options
+};
+
+#if defined(MIRRORLINK_OSREMOTE)
+void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload);
+#endif //defined(MIRRORLINK_OSREMOTE)
 
 void MirrorLinkInit();
 void MirrorLinkMain();

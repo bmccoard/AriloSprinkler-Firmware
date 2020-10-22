@@ -26,6 +26,7 @@
 #include "server_os.h"
 #include "weather.h"
 #include "mqtt.h"
+#include "MirrorLink.h"
 
 // External variables defined in main ion file
 #if defined(ARDUINO)
@@ -187,7 +188,7 @@ void print_json_header(bool bracket=true) {
 byte findKeyVal (const char *str,char *strbuf, uint16_t maxlen,const char *key,bool key_in_pgm=false,uint8_t *keyfound=NULL) {
 	uint8_t found=0;
 #if defined(ESP8266) || defined(ESP32)
-	// for ESP8266: there are two cases:
+	// for ESP8266 and ESP32: there are two cases:
 	// case 1: if str is NULL, we assume the key-val to search is already parsed in wifi_server
 	if(str==NULL) {
 		char _key[10];
@@ -1627,6 +1628,17 @@ void server_change_manual() {
 				q->dur = timer;
 				q->sid = sid;
 				q->pid = 99;	// testing stations are assigned program index 99
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+				// Send station command over MirrorLink
+				Serial.println(F("Testing station"));
+				// Payload format: 
+				// bit 0 = status (1 = On, 0 = Off)
+				// bit 1 to 6 = sid
+				// bit 7 to 12 = time(min)
+				MirrorLinkBuffCmd(ML_TESTSTATION, (((0x3F & timer) << 7) | ((0x3F & sid) << 1) | 1));
+#endif //defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+
 				schedule_all_stations(curr_time);
 			} else {
 				handle_return(HTML_NOT_PERMITTED);
@@ -1635,6 +1647,17 @@ void server_change_manual() {
 			handle_return(HTML_DATA_MISSING);
 		}
 	} else {	// turn off station
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+				// Send station command over MirrorLink
+				Serial.println(F("Testing station"));
+				// Payload format: 
+				// bit 0 = status (1 = On, 0 = Off)
+				// bit 1 to 6 = sid
+				// bit 7 to 12 = time(min)
+				MirrorLinkBuffCmd(ML_TESTSTATION, (sid << 1));
+#endif //defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+
 		turn_off_station(sid, curr_time);
 	}
 	handle_return(HTML_SUCCESS);

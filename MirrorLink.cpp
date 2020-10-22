@@ -61,13 +61,15 @@ typedef union {
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  uint32_t timer;                          // Timer in seconds to control send timing
-  int16_t module_state;                    // LORA module state
-  MirrorLinkStateBitfield status;          // Bittfield including states as well as several flags
+  uint32_t timer;                           // Timer in seconds to control send timing
+  int16_t module_state;                     // LORA module state
+  MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
 #if defined(MIRRORLINK_OSREMOTE)
-  uint8_t bufferedCommands;                // Number of buffered commands to be sent
-  uint8_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
-  uint8_t bufferIndex;                     // Index of the element in the buffer to be sent
+  uint8_t bufferedCommands;                 // Number of buffered commands to be sent
+  uint8_t bufferIndex;                      // Index of the element in the buffer to be sent
+  uint16_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
+#else
+  uint16_t command;                         // Command to be executed by the station
 #endif //MIRRORLINK_OSREMOTE
 } MirrorLink;
 
@@ -115,6 +117,24 @@ void setFlagTx(void) {
   // we sent a packet, set the flag
   MirrorLink.status.transmittedFlag = (uint8_t)true;
 }
+
+#if defined(MIRRORLINK_OSREMOTE)
+void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload) {
+  switch (cmd) {
+    // Initial state
+    case ML_TESTSTATION:
+    	// Buffer message format: 
+			// bit 0 = status (1 = On, 0 = Off)
+			// bit 1 to 6 = sid
+			// bit 7 to 12 = time(min)
+      // bit 13 to 15 = cmd
+      MirrorLink.buffer[0] = (((0x7 & cmd) << 13) | payload);
+      MirrorLink.bufferedCommands += 1;
+      MirrorLink.bufferIndex = 0;
+      break;
+  }
+}
+#endif //defined(MIRRORLINK_OSREMOTE)
 
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
@@ -215,6 +235,112 @@ void MirrorLinkInit(void) {
 #endif // defined(MIRRORLINK_DEBUGRF)
 }
 
+bool MirrorLinkTransmitStatus(void) {
+  bool txSuccessful = false;
+  if (MirrorLink.status.transmittedFlag == (uint8_t)true) {
+    // disable the interrupt service routine while
+    // processing the data
+    MirrorLink.status.enableInterrupt = (uint8_t)false;
+    MirrorLink.status.transmittedFlag = (uint8_t)false;
+
+    if (MirrorLink.module_state == ERR_NONE) {
+      // packet was successfully sent
+      Serial.println(F("transmission finished!"));
+
+      // NOTE: when using interrupt-driven transmit method,
+      //       it is not possible to automatically measure
+      //       transmission data rate using getDataRate()
+
+#if defined(MIRRORLINK_OSREMOTE)
+      MirrorLink.buffer[MirrorLink.bufferIndex] = 0;
+      if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
+#endif // defined(MIRRORLINK_OSREMOTE)
+      txSuccessful = true;
+    } 
+    else {
+      Serial.print(F("failed, code "));
+      Serial.println(MirrorLink.module_state);
+    }
+    MirrorLink.status.enableInterrupt = (uint8_t)true;
+  }
+  return txSuccessful;
+}
+
+bool MirrorLinkReceiveStatus(void) {
+  bool rxSuccessful = false;
+  // check if the flag is set
+  if(MirrorLink.status.receivedFlag) {
+    // disable the interrupt service routine while
+    // processing the data
+    MirrorLink.status.enableInterrupt = (uint8_t)false;
+
+    // reset flag
+    MirrorLink.status.receivedFlag = (uint8_t)false;
+
+    // you can read received data as an Arduino String
+    String str;
+    MirrorLink.module_state = lora.readData(str);
+
+    // you can also read received data as byte array
+    /*
+      byte byteArr[8];
+      MirrorLink.module_state = lora.readData(byteArr, 8);
+    */
+
+    if (MirrorLink.module_state == ERR_NONE) {
+      // packet was successfully received
+      Serial.println(F("[SX1262] Received packet!"));
+
+      // print data of the packet
+      Serial.print(F("[SX1262] Data:\t\t"));
+      Serial.println(str);
+
+      // print RSSI (Received Signal Strength Indicator)
+      Serial.print(F("[SX1262] RSSI:\t\t"));
+      Serial.print(lora.getRSSI());
+      Serial.println(F(" dBm"));
+
+      // print SNR (Signal-to-Noise Ratio)
+      Serial.print(F("[SX1262] SNR:\t\t"));
+      Serial.print(lora.getSNR());
+      Serial.println(F(" dB"));
+
+      rxSuccessful = true;
+    } else if (MirrorLink.module_state == ERR_CRC_MISMATCH) {
+      // packet was received, but is malformed
+      Serial.println(F("CRC error!"));
+
+    } else {
+      // some other error occurred
+      Serial.print(F("failed, code "));
+      Serial.println(MirrorLink.module_state);
+    }
+
+    // put module back to listen mode
+    lora.startReceive();
+
+    // we're ready to receive more packets,
+    // enable interrupt service routine
+    MirrorLink.status.enableInterrupt = (uint8_t)true;
+  }
+  return rxSuccessful;
+}
+
+void MirrorLinkReceiveInit(void) {
+  // Important! To enable receive you need to switch the SX126x antenna switch to RECEIVE 
+  enableRX();
+
+  // start listening for LoRa packets
+  Serial.print(F("[SX1262] Starting to listen ... "));
+  MirrorLink.module_state = lora.startReceive();
+  if (MirrorLink.module_state == ERR_NONE) {
+    Serial.println(F("success!"));
+  } else {
+    Serial.print(F("failed, code "));
+    Serial.println(MirrorLink.module_state);
+  }
+}
+
 // MirrorLink module state machine change function, called once every second
 void MirrorLinkState(void) {
   switch (MirrorLink.status.mirrorlinkState) {
@@ -230,6 +356,7 @@ void MirrorLinkState(void) {
 #else
       if (MirrorLink.status.associated == (uint8_t)true) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+        MirrorLinkReceiveInit();
       }
       else {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
@@ -238,15 +365,14 @@ void MirrorLinkState(void) {
       break;
     // Association state 
     case MIRRORLINK_ASSOCIATE:
+      if (MirrorLink.status.associated == (uint8_t)true) {
 #if defined(MIRRORLINK_OSREMOTE)
-      if (MirrorLink.status.associated == (uint8_t)true) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
-      }
 #else
-      if (MirrorLink.status.associated == (uint8_t)true) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
-      }
+        MirrorLinkReceiveInit();
 #endif // defined(MIRRORLINK_OSREMOTE)
+      }
       break;
 #if defined(MIRRORLINK_OSREMOTE)
     // Buffering state
@@ -265,43 +391,84 @@ void MirrorLinkState(void) {
       // If send process if finished
       // empty the command in the buffer
       // change state to receive
-      if (MirrorLink.status.transmittedFlag == (uint8_t)true) {
-        // disable the interrupt service routine while
-        // processing the data
-        MirrorLink.status.enableInterrupt = (uint8_t)false;
-        MirrorLink.status.transmittedFlag = (uint8_t)false;
-
-        if (MirrorLink.module_state == ERR_NONE) {
-          // packet was successfully sent
-          Serial.println(F("transmission finished!"));
-
-          // NOTE: when using interrupt-driven transmit method,
-          //       it is not possible to automatically measure
-          //       transmission data rate using getDataRate()
-        } 
-        else {
-          Serial.print(F("failed, code "));
-          Serial.println(MirrorLink.module_state);
-        }
-#if defined(MIRRORLINK_OSREMOTE)
-        MirrorLink.buffer[MirrorLink.bufferIndex] = 0;
-#endif // defined(MIRRORLINK_OSREMOTE)
+      if (MirrorLinkTransmitStatus() == true) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
-        MirrorLink.status.enableInterrupt = (uint8_t)true;
+        MirrorLinkReceiveInit();
       }
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
+      if (MirrorLinkReceiveStatus() == true) {
 #if defined(MIRRORLINK_OSREMOTE)
       // If confirmation of buffer commands received
       // OR timeout
       // change state to Buffering
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
 #else
       // If commands received
       // change state to Send
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
+    }
   }
+}
+
+void MirrorLinkReceive(void) {
+#if defined(MIRRORLINK_OSREMOTE)
+
+#else
+  // You can read received data as byte array
+  /*
+    byte byteArr[8];
+    MirrorLink.module_state = lora.readData(byteArr, 8);
+  */
+  byte byteArr[2];
+  MirrorLink.module_state = lora.readData(byteArr, 2);
+
+  if (MirrorLink.module_state == ERR_NONE) {
+    // packet was successfully received
+    Serial.println(F("[SX1262] Received packet!"));
+
+    // print data of the packet
+    Serial.print(F("[SX1262] Data:\t\t"));
+    Serial.println(str);
+
+    // print RSSI (Received Signal Strength Indicator)
+    Serial.print(F("[SX1262] RSSI:\t\t"));
+    Serial.print(lora.getRSSI());
+    Serial.println(F(" dBm"));
+
+    // print SNR (Signal-to-Noise Ratio)
+    Serial.print(F("[SX1262] SNR:\t\t"));
+    Serial.print(lora.getSNR());
+    Serial.println(F(" dB"));
+    MirrorLink.command = ((uint16_t)byteArr[0] << 8) | ((uint16_t)byteArr[1]);
+
+  } else if (MirrorLink.module_state == ERR_CRC_MISMATCH) {
+    // packet was received, but is malformed
+    Serial.println(F("CRC error!"));
+
+  } else {
+    // some other error occurred
+    Serial.print(F("failed, code "));
+    Serial.println(MirrorLink.module_state);
+  }
+
+#endif // defined(MIRRORLINK_OSREMOTE)
+}
+
+void MirrorLinkTransmit(void) {
+#if defined(MIRRORLINK_OSREMOTE)
+  // You can transmit byte array up to 256 bytes long
+  /*
+    byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
+                      0x89, 0xAB, 0xCD, 0xEF};
+    MirrorLink.module_state = lora.startTransmit(byteArr, 8);
+  */
+  byte byteArr[2] = {(byte)(MirrorLink.buffer[0] >> 8) , (byte)(0xFF & MirrorLink.buffer[0])};
+  MirrorLink.module_state = lora.startTransmit(byteArr, 2);
+#endif // defined(MIRRORLINK_OSREMOTE)
 }
 
 // MirrorLink module state maction actions function, called once every second
@@ -313,6 +480,7 @@ void MirrorLinkWork(void) {
       break;
     // Association state 
     case MIRRORLINK_ASSOCIATE:
+      // TODO: Association algorithm
 #if defined(MIRRORLINK_OSREMOTE)
       // Check if associating beacon answer
       // Send associating beacon if no answer
