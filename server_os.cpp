@@ -1624,20 +1624,28 @@ void server_change_manual() {
 			}
 			// if the queue is not full
 			if (q) {
-				q->st = 0;
-				q->dur = timer;
-				q->sid = sid;
-				q->pid = 99;	// testing stations are assigned program index 99
-
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) 
+#if defined(MIRRORLINK_OSREMOTE)
 				// Send station command over MirrorLink
 				Serial.println(F("Testing station"));
 				// Payload format: 
 				// bit 0 = status (1 = On, 0 = Off)
 				// bit 1 to 6 = sid
 				// bit 7 to 12 = time(min)
-				MirrorLinkBuffCmd(ML_TESTSTATION, (((0x3F & timer) << 7) | ((0x3F & sid) << 1) | 1));
-#endif //defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+				MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (((0x3F & timer) << 7) | ((0x3F & sid) << 1) | 1));
+#else
+                // If message has been received from remote then actuate the output
+                uint16_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
+                if ((payload != 0) & ((payload & 0x1) == 1)) {
+                    timer = (payload >> 7);
+                    sid = (0x3F & (payload >> 1));
+                }
+#endif //defined(MIRRORLINK_OSREMOTE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+				q->st = 0;
+				q->dur = timer;
+				q->sid = sid;
+				q->pid = 99;	// testing stations are assigned program index 99
 
 				schedule_all_stations(curr_time);
 			} else {
@@ -1647,16 +1655,23 @@ void server_change_manual() {
 			handle_return(HTML_DATA_MISSING);
 		}
 	} else {	// turn off station
-
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-				// Send station command over MirrorLink
-				Serial.println(F("Testing station"));
-				// Payload format: 
-				// bit 0 = status (1 = On, 0 = Off)
-				// bit 1 to 6 = sid
-				// bit 7 to 12 = time(min)
-				MirrorLinkBuffCmd(ML_TESTSTATION, (sid << 1));
-#endif //defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) 
+#if defined(MIRRORLINK_OSREMOTE)
+		// Send station command over MirrorLink
+		Serial.println(F("Testing station"));
+		// Payload format: 
+		// bit 0 = status (1 = On, 0 = Off)
+		// bit 1 to 6 = sid
+		// bit 7 to 12 = time(min)
+		MirrorLinkBuffCmd(ML_TESTSTATION, (sid << 1));
+#else
+		// If message has been received from remote then switch off the output
+		uint16_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
+		if ((payload != 0) & ((payload & 0x1) == 1)) {
+			sid = (0x3F & (payload >> 1));
+		}
+#endif //defined(MIRRORLINK_OSREMOTE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) 
 
 		turn_off_station(sid, curr_time);
 	}

@@ -19,6 +19,7 @@
 
 #include "defines.h"
 #include "MirrorLink.h"
+#include "server_os.h"
 #include <RadioLib.h>
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
@@ -68,6 +69,7 @@ struct MIRRORLINK {
   uint8_t bufferedCommands;                 // Number of buffered commands to be sent
   uint8_t bufferIndex;                      // Index of the element in the buffer to be sent
   uint16_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
+  uint16_t response;                        // Response from the station to the last command sent
 #else
   uint16_t command;                         // Command to be executed by the station
 #endif //MIRRORLINK_OSREMOTE
@@ -128,11 +130,23 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload) {
 			// bit 1 to 6 = sid
 			// bit 7 to 12 = time(min)
       // bit 13 to 15 = cmd
-      MirrorLink.buffer[0] = (((0x7 & cmd) << 13) | payload);
+      MirrorLink.buffer[0] = (((0x7 & (uint16_t)cmd) << 13) | payload);
       MirrorLink.bufferedCommands += 1;
       MirrorLink.bufferIndex = 0;
       break;
   }
+}
+#else
+uint16_t MirrorLinkGetCmd(uint8_t cmd)
+{
+  uint16_t payload;
+  if(cmd == (MirrorLink.command >> 13)) {
+    payload = (MirrorLink.command & 0x1FFF);
+  }
+  else {
+    payload = 0;
+  }
+  return payload;
 }
 #endif //defined(MIRRORLINK_OSREMOTE)
 
@@ -144,7 +158,7 @@ void MirrorLinkInit(void) {
   MirrorLink.status.transmittedFlag = (uint8_t)false;
   MirrorLink.status.enableInterrupt = (uint8_t)true;
   MirrorLink.status.mirrorlinkState = MIRRORLINK_INIT;
-  MirrorLink.timer = 0;
+  MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -190,6 +204,13 @@ void MirrorLinkInit(void) {
 	{
 		Serial.println(F("Selected TCXO voltage is invalid for this module!"));
 	}
+
+	// set the function that will be called
+	// when new packet is transmitted
+  lora.setDio1Action(setFlagTx);
+  	// set the function that will be called
+	// when new packet is received
+	lora.setDio1Action(setFlagRx);
 
 #else
 #if defined(MIRRORLINK_OSREMOTE)
@@ -253,7 +274,6 @@ bool MirrorLinkTransmitStatus(void) {
 
 #if defined(MIRRORLINK_OSREMOTE)
       MirrorLink.buffer[MirrorLink.bufferIndex] = 0;
-      if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
 #endif // defined(MIRRORLINK_OSREMOTE)
       txSuccessful = true;
     } 
@@ -270,6 +290,7 @@ bool MirrorLinkReceiveStatus(void) {
   bool rxSuccessful = false;
   // check if the flag is set
   if(MirrorLink.status.receivedFlag) {
+
     // disable the interrupt service routine while
     // processing the data
     MirrorLink.status.enableInterrupt = (uint8_t)false;
@@ -277,9 +298,13 @@ bool MirrorLinkReceiveStatus(void) {
     // reset flag
     MirrorLink.status.receivedFlag = (uint8_t)false;
 
-    // you can read received data as an Arduino String
-    String str;
-    MirrorLink.module_state = lora.readData(str);
+    // You can read received data as byte array
+    /*
+      byte byteArr[8];
+      MirrorLink.module_state = lora.readData(byteArr, 8);
+    */
+    byte byteArr[2];
+    MirrorLink.module_state = lora.readData(byteArr, 2);
 
     // you can also read received data as byte array
     /*
@@ -288,12 +313,22 @@ bool MirrorLinkReceiveStatus(void) {
     */
 
     if (MirrorLink.module_state == ERR_NONE) {
+
+#if defined(MIRRORLINK_OSREMOTE)
+      MirrorLink.response = ((uint16_t)byteArr[0] << 8) | ((uint16_t)byteArr[1]);
+#else
+      MirrorLink.command = ((uint16_t)byteArr[0] << 8) | ((uint16_t)byteArr[1]);
+#endif // defined(MIRRORLINK_OSREMOTE)
       // packet was successfully received
       Serial.println(F("[SX1262] Received packet!"));
 
       // print data of the packet
       Serial.print(F("[SX1262] Data:\t\t"));
-      Serial.println(str);
+#if defined(MIRRORLINK_OSREMOTE)
+      Serial.println(MirrorLink.response);
+#else
+      Serial.println(MirrorLink.command);
+#endif // defined(MIRRORLINK_OSREMOTE)
 
       // print RSSI (Received Signal Strength Indicator)
       Serial.print(F("[SX1262] RSSI:\t\t"));
@@ -346,19 +381,24 @@ void MirrorLinkState(void) {
   switch (MirrorLink.status.mirrorlinkState) {
     // Initial state
     case MIRRORLINK_INIT:
+      Serial.println(F("STATE: MIRRORLINK_INIT"));
 #if defined(MIRRORLINK_OSREMOTE)
       if (MirrorLink.status.associated == (uint8_t)true) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+        Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
       }
       else {
+        Serial.println(F("STATE: MIRRORLINK_ASSOCIATE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
       }
 #else
       if (MirrorLink.status.associated == (uint8_t)true) {
+        Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
       }
       else {
+        Serial.println(F("STATE: MIRRORLINK_ASSOCIATE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
       }
 #endif // defined(MIRRORLINK_OSREMOTE)
@@ -367,8 +407,10 @@ void MirrorLinkState(void) {
     case MIRRORLINK_ASSOCIATE:
       if (MirrorLink.status.associated == (uint8_t)true) {
 #if defined(MIRRORLINK_OSREMOTE)
+        Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
 #else
+        Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
 #endif // defined(MIRRORLINK_OSREMOTE)
@@ -380,8 +422,12 @@ void MirrorLinkState(void) {
       // If timer to be able to use the channel again empty
       // AND buffer not empty
       // change state to send
+      // TODO: Correct timer use
+      MirrorLink.timer = 0;
       if (  (MirrorLink.timer == 0)
-          &&(MirrorLink.bufferedCommands >= 1)) {
+          &&(MirrorLink.bufferedCommands > 0)) {
+        Serial.println(MirrorLink.bufferedCommands);
+        Serial.println(F("STATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
       }
       break;
@@ -391,22 +437,34 @@ void MirrorLinkState(void) {
       // If send process if finished
       // empty the command in the buffer
       // change state to receive
-      if (MirrorLinkTransmitStatus() == true) {
+      if (   (MirrorLinkTransmitStatus() == true)
+          || (MirrorLink.timer == 0)) {
+#if defined(MIRRORLINK_OSREMOTE)
+        if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
+#endif // defined(MIRRORLINK_OSREMOTE)
+        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
       }
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
-      if (MirrorLinkReceiveStatus() == true) {
 #if defined(MIRRORLINK_OSREMOTE)
       // If confirmation of buffer commands received
       // OR timeout
       // change state to Buffering
+      if (  (MirrorLinkReceiveStatus() == true)
+          || (MirrorLink.timer == 0)) {
+        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
 #else
       // If commands received
       // change state to Send
+      if (MirrorLinkReceiveStatus() == true) {
+        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        Serial.println(F("STATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
@@ -414,52 +472,11 @@ void MirrorLinkState(void) {
   }
 }
 
-void MirrorLinkReceive(void) {
-#if defined(MIRRORLINK_OSREMOTE)
-
-#else
-  // You can read received data as byte array
-  /*
-    byte byteArr[8];
-    MirrorLink.module_state = lora.readData(byteArr, 8);
-  */
-  byte byteArr[2];
-  MirrorLink.module_state = lora.readData(byteArr, 2);
-
-  if (MirrorLink.module_state == ERR_NONE) {
-    // packet was successfully received
-    Serial.println(F("[SX1262] Received packet!"));
-
-    // print data of the packet
-    Serial.print(F("[SX1262] Data:\t\t"));
-    Serial.println(str);
-
-    // print RSSI (Received Signal Strength Indicator)
-    Serial.print(F("[SX1262] RSSI:\t\t"));
-    Serial.print(lora.getRSSI());
-    Serial.println(F(" dBm"));
-
-    // print SNR (Signal-to-Noise Ratio)
-    Serial.print(F("[SX1262] SNR:\t\t"));
-    Serial.print(lora.getSNR());
-    Serial.println(F(" dB"));
-    MirrorLink.command = ((uint16_t)byteArr[0] << 8) | ((uint16_t)byteArr[1]);
-
-  } else if (MirrorLink.module_state == ERR_CRC_MISMATCH) {
-    // packet was received, but is malformed
-    Serial.println(F("CRC error!"));
-
-  } else {
-    // some other error occurred
-    Serial.print(F("failed, code "));
-    Serial.println(MirrorLink.module_state);
-  }
-
-#endif // defined(MIRRORLINK_OSREMOTE)
-}
-
 void MirrorLinkTransmit(void) {
+	// Important! To enable transmit you need to switch the SX126x antenna switch to TRANSMIT
+	enableTX();
 #if defined(MIRRORLINK_OSREMOTE)
+  // Transmit buffered commands
   // You can transmit byte array up to 256 bytes long
   /*
     byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
@@ -467,6 +484,15 @@ void MirrorLinkTransmit(void) {
     MirrorLink.module_state = lora.startTransmit(byteArr, 8);
   */
   byte byteArr[2] = {(byte)(MirrorLink.buffer[0] >> 8) , (byte)(0xFF & MirrorLink.buffer[0])};
+  MirrorLink.module_state = lora.startTransmit(byteArr, 2);
+#else
+  // TODO: Transmit answer to command
+  /*
+    byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
+                      0x89, 0xAB, 0xCD, 0xEF};
+    MirrorLink.module_state = lora.startTransmit(byteArr, 8);
+  */
+  byte byteArr[2] = {(byte)(MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
   MirrorLink.module_state = lora.startTransmit(byteArr, 2);
 #endif // defined(MIRRORLINK_OSREMOTE)
 }
@@ -498,20 +524,36 @@ void MirrorLinkWork(void) {
 #endif // defined(MIRRORLINK_OSREMOTE)
     // Send state
     case MIRRORLINK_SEND:
+      if(MirrorLink.timer > 0) MirrorLink.timer--;
 #if defined(MIRRORLINK_OSREMOTE)
       // Send buffer
+      // If number of buffered commands > 0
+      if (MirrorLink.bufferedCommands > 0) {
+        MirrorLinkTransmit();
+      }
       // Empty buffer
       // Calculate idle time until next send period
 #else
-      // 
+      // Send command answer
+      MirrorLinkTransmit();
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
+      if(MirrorLink.timer > 0) MirrorLink.timer--;
 #if defined(MIRRORLINK_OSREMOTE)
-      // 
+      //
 #else
-      // 
+      if (MirrorLink.command != 0) {
+        // Execute command
+        switch (MirrorLink.command >> 13) {
+          // Initial state
+          case ML_TESTSTATION:
+            server_change_manual();
+            break;
+        }
+        MirrorLink.command = 0;
+      }
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
   }

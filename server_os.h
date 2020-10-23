@@ -29,6 +29,7 @@
 #endif
 
 char dec2hexchar(byte dec);
+void server_change_manual(void);
 
 class BufferFiller {
 	char *start; //!< Pointer to start of buffer

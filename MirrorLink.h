@@ -24,11 +24,12 @@
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 // Config defines
-//#define MIRRORLINK_DEBUGRF        // If defined, RF send/receive test between remote and station is performed
-#define MIRRORLINK_DUTYCYCLE 100    // Maximum duty cycle allowed in tenths of percentage, default 100 = 10%
+//#define MIRRORLINK_DEBUGRF              // If defined, RF send/receive test between remote and station is performed
+#define MIRRORLINK_DUTYCYCLE       100  // Maximum duty cycle allowed in tenths of percentage, default 100 = 10%
 #if defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_BUFFERLENGTH 10  // Maximum command buffer length
+#define MIRRORLINK_BUFFERLENGTH     10  // Maximum command buffer length
 #endif // defined(MIRRORLINK_OSREMOTE)
+#define MIRRORLINK_RXTX_MAX_TIME    60  // Maximum time in seconds to wait for response from station or command / response transmission
 
 enum {
   ML_TESTSTATION = 0,// read-only (ro)
@@ -37,6 +38,8 @@ enum {
 
 #if defined(MIRRORLINK_OSREMOTE)
 void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload);
+#else
+uint16_t MirrorLinkGetCmd(uint8_t cmd);
 #endif //defined(MIRRORLINK_OSREMOTE)
 
 void MirrorLinkInit();
