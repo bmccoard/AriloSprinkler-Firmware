@@ -436,8 +436,8 @@ enum {
 	#define PIN_SR_DATA_ALT   21    // shift register data pin (alternative, for RPi 1 rev. 1 boards)
 	#define PIN_SR_CLOCK       4    // shift register clock pin
 	#define PIN_SR_OE         17    // shift register output enable pin
-	#define PIN_SENSOR1				14
-	#define PIN_SENSOR2				23
+	#define PIN_SENSOR1		  14
+	#define PIN_SENSOR2		  23
 	#define PIN_RFTX          15    // RF transmitter pin
 	//#define PIN_BUTTON_1      23    // button 1
 	//#define PIN_BUTTON_2      24    // button 2
