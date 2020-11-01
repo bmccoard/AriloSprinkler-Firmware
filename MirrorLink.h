@@ -30,11 +30,12 @@
 #define MIRRORLINK_BUFFERLENGTH     10  // Maximum command buffer length
 #endif // defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_RXTX_MAX_TIME    60  // Maximum time in seconds to wait for response from station or command / response transmission
-#define MIRRORLINK_RXTX_DEAD_TIME   5   // Time in seconds after receiving a message, to start transmitting one
+#define MIRRORLINK_RXTX_DEAD_TIME   1   // Time in seconds after receiving a message, to start transmitting one
 
 // Enum for commands
 enum {
-  ML_TESTSTATION = 0,// read-only (ro)
+  ML_NO_CMD = 0,     // No command
+  ML_TESTSTATION,    // read-only (ro)
 	ML_MAX_CMD         // total number of integer options
 };
 

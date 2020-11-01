@@ -152,6 +152,10 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload) {
       MirrorLink.buffer[0] = (((0x7 & (uint16_t)cmd) << 13) | payload);
       MirrorLink.bufferedCommands += 1;
       MirrorLink.bufferIndex = 0;
+      Serial.println(F("Command: ... "));
+      Serial.println(cmd);
+      Serial.println(payload);
+      Serial.println(MirrorLink.buffer[0]);
       break;
   }
 }
@@ -165,6 +169,9 @@ uint16_t MirrorLinkGetCmd(uint8_t cmd)
   else {
     payload = 0;
   }
+  Serial.println(F("Command: ... "));
+  Serial.println(MirrorLink.command);
+  Serial.println(payload);
   return payload;
 }
 #endif //defined(MIRRORLINK_OSREMOTE)
@@ -583,20 +590,22 @@ void MirrorLinkWork(void) {
     // Receive state
     case MIRRORLINK_RECEIVE:
       if (MirrorLink.timer > 0) MirrorLink.timer--;
-#if defined(MIRRORLINK_OSREMOTE)
-      //
-#else
+#if !defined(MIRRORLINK_OSREMOTE)
       if (MirrorLink.command != 0) {
+        Serial.print(F("Command:"));
+        Serial.println(MirrorLink.command);
+        Serial.println((MirrorLink.command >> 13));
         // Execute command
         switch (MirrorLink.command >> 13) {
           // Initial state
           case ML_TESTSTATION:
+            Serial.println(F("ML_TESTSTATION"));
             server_change_manual();
             break;
         }
         MirrorLink.command = 0;
       }
-#endif // defined(MIRRORLINK_OSREMOTE)
+#endif // !defined(MIRRORLINK_OSREMOTE)
       break;
   }
 }
