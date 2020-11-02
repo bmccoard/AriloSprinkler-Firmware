@@ -503,7 +503,7 @@ byte OpenSprinkler::start_network() {
 #elif defined(ESP32)
         MDNS.addService("_http", "_tcp", 80 );
         MDNS.addServiceTxt("_http", "_tcp", "path", "/");
-//      MDNS.addService("_http", "_udp", 80 );
+      //MDNS.addService("_http", "_udp", 80 );
       wifi_server = new WebServer(80);    
     } else {
 //      MDNS.addService("_http", "_tcp", httpport);

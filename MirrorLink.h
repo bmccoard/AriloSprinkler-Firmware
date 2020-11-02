@@ -51,6 +51,8 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload);
 uint16_t MirrorLinkGetCmd(uint8_t cmd);
 #endif //defined(MIRRORLINK_OSREMOTE)
 
+void handle_mirrorlink_request();
+
 void MirrorLinkInit();
 void MirrorLinkMain();
 #endif // defined(ESP32) && defined(MIRRORLINK_ENABLE)

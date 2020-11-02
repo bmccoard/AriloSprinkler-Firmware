@@ -1578,64 +1578,32 @@ void server_json_status()
 void server_change_manual() {
 #if defined(ESP8266) || defined(ESP32)
 	char *p = NULL;
+	if(!process_password()) return;
 	if (m_client)
 		p = get_buffer;  
 #else
 	char *p = get_buffer;
 #endif
-#if defined(ESP32) && (defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
-	// If message has been received from remote then actuate the output
-	uint16_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
-	Serial.print(F("Payload in server_change_manual: ... "));
-	Serial.println(payload);
-	if ((payload == 0) && (!process_password())) return;
-#endif //(defined(ESP32) && defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
 	int sid=-1;
 	if (findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("sid"), true)) {
 		sid=atoi(tmp_buffer);
 		if (sid<0 || sid>=os.nstations) handle_return(HTML_DATA_OUTOFBOUND);
 	} else {
-#if defined(ESP32) && (defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
-		sid = (0x3F & (payload >> 1));
-		Serial.print(F("Sid: ... "));
-		Serial.println(sid);
-		if (sid<0 || sid>=os.nstations) handle_return(HTML_DATA_OUTOFBOUND);
-#else
 		handle_return(HTML_DATA_MISSING);
-#endif //(defined(ESP32) && defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
 	}
+
 	byte en=0;
 	if (findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("en"), true)) {
 		en=atoi(tmp_buffer);
 	} else {
-#if defined(ESP32) && (defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
-	if ((payload & 0x1) == 1) {
-		en = 1;
-		Serial.print(F("en: ... "));
-		Serial.println(en);
-	}
-#else
 		handle_return(HTML_DATA_MISSING);
-#endif //(defined(ESP32) && defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
 	}
+
 	uint16_t timer=0;
 	unsigned long curr_time = os.now_tz();
 	if (en) { // if turning on a station, must provide timer
-#if defined(ESP32) && (defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
-		if (	((payload != 0) & ((payload & 0x1) == 1))
-			||	(findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("t"), true))) {
-			if ((payload != 0) & ((payload & 0x1) == 1)) {
-				timer = (payload >> 7);
-			}
-			else {
-				timer=(uint16_t)atol(tmp_buffer);
-			}
-			Serial.print(F("Timer: ... "));
-			Serial.println(en);
-#else
 		if (findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("t"), true)) {
 			timer=(uint16_t)atol(tmp_buffer);
-#endif //(defined(ESP32) && defined(MIRRORLINK_ENABLE) && (!defined(MIRRORLINK_OSREMOTE)))
 			if (timer==0 || timer>64800) {
 				handle_return(HTML_DATA_OUTOFBOUND);
 			}
@@ -1655,8 +1623,7 @@ void server_change_manual() {
 			}
 			// if the queue is not full
 			if (q) {
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) 
-#if defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 				// Send station command over MirrorLink
 				Serial.println(F("Testing station"));
 				// Payload format: 
@@ -1664,19 +1631,7 @@ void server_change_manual() {
 				// bit 1 to 6 = sid
 				// bit 7 to 12 = time(min)
 				MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (((0x3F & timer) << 7) | ((0x3F & sid) << 1) | 1));
-#else
-                // If message has been received from remote then actuate the output
-                uint16_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
-                if ((payload != 0) & ((payload & 0x1) == 1)) {
-                    timer = (payload >> 7);
-                    sid = (0x3F & (payload >> 1));
-                }
-				Serial.print(F("Sid: ... "));
-      			Serial.println(sid);
-				Serial.print(F("Timer: ... "));
-      			Serial.println(timer);
-#endif //defined(MIRRORLINK_OSREMOTE)
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 				q->st = 0;
 				q->dur = timer;
 				q->sid = sid;

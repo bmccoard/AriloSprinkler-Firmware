@@ -19,6 +19,7 @@
 
 #include "defines.h"
 #include "MirrorLink.h"
+#include "OpenSprinkler.h"
 #include "server_os.h"
 #include <RadioLib.h>
 
@@ -41,6 +42,12 @@ enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_BUFFERI
 #else
 enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
 #endif
+
+// Define buffers: need them to be sufficiently large to cover string option reading
+extern char tmp_buffer[];
+
+// ====== Object defines ======
+extern OpenSprinkler os;
 
 // SX1262 has the following connections:
 // NSS pin:   18
@@ -536,11 +543,15 @@ void MirrorLinkState(void) {
           Serial.println(MirrorLink.command);
           Serial.println((MirrorLink.command >> 13));
           // Execute command
+          // TODO: Check possibilities from set_station_data
           switch (MirrorLink.command >> 13) {
             // Initial state
             case ML_TESTSTATION:
-              Serial.println(F("ML_TESTSTATION"));
-              server_change_manual();
+              uint16_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
+              int16_t sid = (int16_t) (0x3F & (payload >> 1));
+              uint8_t en = (uint8_t) (payload & 0x1);
+              uint16_t timer = (uint16_t) (payload >> 7);
+              os.set_station_bit(sid, en);
               break;
           }
           MirrorLink.command = 0;
