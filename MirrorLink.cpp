@@ -567,7 +567,7 @@ void MirrorLinkState(void) {
 			        }							
               if (q) {
 								q->st = 0;
-								q->dur = timer;
+								q->dur = (timer * 60);
 								q->sid = sid;
 								q->pid = pid;
                 Serial.println(F("Enqueing 1"));

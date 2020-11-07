@@ -1202,7 +1202,7 @@ void schedule_all_stations(ulong curr_time) {
 		Serial.println(q->sid);
 		Serial.print(F("Duration: "));
 		Serial.println(q->dur);
-		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (((0x3F & (q->dur)) << 7) | ((0x3F & sid) << 1) | 1));
+		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (((0x3F & ((q->dur) / 60)) << 7) | ((0x3F & sid) << 1) | 1));
 #else
 		//uint16_t payload = MirrorLinkGetCmd(ML_TESTSTATION);
 		//if (payload != 0) {
