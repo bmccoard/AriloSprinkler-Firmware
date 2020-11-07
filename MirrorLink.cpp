@@ -17,6 +17,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "program.h"
 #include "defines.h"
 #include "MirrorLink.h"
 #include "OpenSprinkler.h"
@@ -48,6 +49,7 @@ extern char tmp_buffer[];
 
 // ====== Object defines ======
 extern OpenSprinkler os;
+extern ProgramData pd;
 
 // SX1262 has the following connections:
 // NSS pin:   18
@@ -82,6 +84,7 @@ struct MIRRORLINK {
 #endif //MIRRORLINK_OSREMOTE
 } MirrorLink;
 
+void schedule_all_stations(ulong curr_time);
 
 // Set RX pin HIGH and TX pin LOW to switch to RECEIVE
 void enableRX(void)
@@ -548,10 +551,33 @@ void MirrorLinkState(void) {
             // Initial state
             case ML_TESTSTATION:
               uint16_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
-              int16_t sid = (int16_t) (0x3F & (payload >> 1));
+              byte sid = (byte) (0x3F & (payload >> 1));
               uint8_t en = (uint8_t) (payload & 0x1);
               uint16_t timer = (uint16_t) (payload >> 7);
-              os.set_station_bit(sid, en);
+              byte pid = 99;
+							// check if water time is still valid
+							// because it may end up being zero after scaling
+              RuntimeQueueStruct *q = NULL;
+              byte sqi = pd.station_qid[sid];
+              // check if the station already has a schedule
+              if (sqi!=0xFF) {	// if we, we will overwrite the schedule
+                q = pd.queue+sqi;
+              } else {	// otherwise create a new queue element
+                q = pd.enqueue();
+			        }							
+              if (q) {
+								q->st = 0;
+								q->dur = timer;
+								q->sid = sid;
+								q->pid = pid;
+                Serial.println(F("Enqueing 1"));
+                Serial.println(q->sid);
+                Serial.println(q->dur);
+							} else {
+								// queue is full
+							}
+              schedule_all_stations(os.now_tz());
+              //os.set_station_bit(sid, en);
               break;
           }
           MirrorLink.command = 0;

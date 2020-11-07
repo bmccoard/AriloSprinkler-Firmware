@@ -1100,6 +1100,14 @@ void turn_off_station(byte sid, ulong curr_time) {
 			// log station run
 			write_log(LOGDATA_STATION, curr_time);
 			push_message(NOTIFY_STATION_OFF, sid, pd.lastrun.duration);
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+			// Send station command over MirrorLink
+			// Payload format: 
+			// bit 0 = status (1 = On, 0 = Off)
+			// bit 1 to 6 = sid
+			// bit 7 to 12 = time(min), 0 if not relevant
+			MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0x3F & sid) << 1));
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 		}
 	}
 
@@ -1181,6 +1189,26 @@ void schedule_all_stations(ulong curr_time) {
 		byte sid=q->sid;
 		byte bid=sid>>3;
 		byte s=sid&0x07;
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) 
+#if defined(MIRRORLINK_OSREMOTE)
+		// Send station command over MirrorLink
+		// Payload format: 
+		// bit 0 = status (1 = On, 0 = Off)
+		// bit 1 to 6 = sid
+		// bit 7 to 12 = time(min)
+		Serial.println(F("STATE: Enqueuing to send"));
+		Serial.print(F("Sid"));
+		Serial.println(q->sid);
+		Serial.print(F("Duration: "));
+		Serial.println(q->dur);
+		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (((0x3F & (q->dur)) << 7) | ((0x3F & sid) << 1) | 1));
+#else
+		//uint16_t payload = MirrorLinkGetCmd(ML_TESTSTATION);
+		//if (payload != 0) {
+		//}
+#endif //defined(MIRRORLINK_OSREMOTE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 		// if this is a sequential station and the controller is not in remote extension mode
 		// use sequential scheduling. station delay time apples
@@ -1311,7 +1339,7 @@ void push_message(int type, uint32_t lval, float fval, const char* sval) {
 	}
 
 	switch(type) {
-		case  NOTIFY_STATION_ON:
+		case NOTIFY_STATION_ON:
 
 			// todo: add IFTTT support for this event as well
 			if (os.mqtt.enabled()) {

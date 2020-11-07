@@ -26,7 +26,6 @@
 #include "server_os.h"
 #include "weather.h"
 #include "mqtt.h"
-#include "MirrorLink.h"
 
 // External variables defined in main ion file
 #if defined(ARDUINO)
@@ -1623,15 +1622,6 @@ void server_change_manual() {
 			}
 			// if the queue is not full
 			if (q) {
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-				// Send station command over MirrorLink
-				Serial.println(F("Testing station"));
-				// Payload format: 
-				// bit 0 = status (1 = On, 0 = Off)
-				// bit 1 to 6 = sid
-				// bit 7 to 12 = time(min)
-				MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (((0x3F & timer) << 7) | ((0x3F & sid) << 1) | 1));
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 				q->st = 0;
 				q->dur = timer;
 				q->sid = sid;
@@ -1645,16 +1635,6 @@ void server_change_manual() {
 			handle_return(HTML_DATA_MISSING);
 		}
 	} else {	// turn off station
-#if defined(ESP32) && (defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE))
-		// Send station command over MirrorLink
-		Serial.println(F("Testing station"));
-		// Payload format: 
-		// bit 0 = status (1 = On, 0 = Off)
-		// bit 1 to 6 = sid
-		// bit 7 to 12 = time(min)
-		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (sid << 1));
-#endif //(defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)) 
-
 		turn_off_station(sid, curr_time);
 	}
 	handle_return(HTML_SUCCESS);
