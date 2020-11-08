@@ -34,11 +34,11 @@
 
 // Enum for commands
 enum {
-  ML_NO_CMD = 0,       // No command
-  ML_TESTSTATION,      // Switch on station for a specific duration in minutes
-  ML_PROGRAMSTARTTIME, // Configure start time of a specific program (max. 4 per program)
-  ML_PROGRAMDURATION,  // Configure duration of a specific station for a specific program (max. 8)
-	ML_MAX_CMD           // total number of integer options
+  ML_NO_CMD = 0,              // No command
+  ML_TESTSTATION,             // Switch on station for a specific duration in minutes
+  ML_PROGRAMSTARTTIME,        // Configure start time of a specific program (max. 4 per program)
+  ML_PROGRAMDURATION,         // Configure duration of a specific station for a specific program (max. 8)
+	ML_MAX_CMD                  // total number of integer options
 };
 
 // Enum for transmit/receive status

@@ -161,36 +161,37 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
 			// bit 9 to 24 = time(sec)
       // bit 25 to 26 = Not used
       // bit 27 to 31 = cmd
+    case ML_PROGRAMSTARTTIME:
+      // Buffer message format:
+      // bit 0 to 6 = program number (max. is 40)
+      // bit 7 to 8 = start time number (max. is 4 for each program)
+      // bit 9 to 24 = start time
+      // bit 25 = Starttime type
+      // bit 26 = Not used
+      // bit 27 to 31 = cmd
+    case ML_PROGRAMDURATION:
+      // Buffer message format:
+      // bit 0 to 6 = program number (max. is 40)
+      // bit 7 to 14 = sid
+      // bit 15 to 25 = time (min)
+      // bit 26 = Not used
+      // bit 27 to 31 = cmd
       MirrorLink.buffer[0] = (((0x1F & (uint16_t)cmd) << 27) | payload);
       MirrorLink.bufferedCommands += 1;
       MirrorLink.bufferIndex = 0;
-      Serial.println(F("Command: ... "));
-      Serial.println(cmd);
-      Serial.println(payload);
-      Serial.println(MirrorLink.buffer[0]);
-      break;
-    case ML_PROGRAMSTARTTIME:
-      // Buffer message format:
-      // standard start time (value between 0 to 1440, by bits 0 to 10)
-      break;
-    case ML_PROGRAMDURATION:
-      // Buffer message format:
       break;
   }
 }
 #else
 uint32_t MirrorLinkGetCmd(uint8_t cmd)
 {
-  uint32_t payload;
+  uint32_t payload = 0;
   if(cmd == (MirrorLink.command >> 27)) {
     payload = (MirrorLink.command & 0x7FFFFFF);
   }
   else {
     payload = 0;
   }
-  Serial.println(F("Command: ... "));
-  Serial.println(MirrorLink.command);
-  Serial.println(payload);
   return payload;
 }
 #endif //defined(MIRRORLINK_OSREMOTE)
@@ -568,16 +569,40 @@ void MirrorLinkState(void) {
               uint32_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
               byte sid = (byte) (0xFF & (payload >> 1));
               uint8_t en = (uint8_t) (payload & 0x1);
-              uint16_t timer = (uint16_t) ((0xFFFF) & (payload >> 9));
-              Serial.print(F("Timer:"));
-              Serial.println(timer);
+              uint16_t timer = (uint16_t) ((0xFFFF) & (payload >> 9));     
               schedule_station(sid, timer);
+              break;
+            case ML_PROGRAMSTARTTIME:
+              // Message format:
+              // Standard start time (value between 0 to 1440, by bits 0 to 10)
+              // bit 0 to 6 = program number (max. is 40)
+              // bit 7 to 8 = start time number (max. is 4 for each program)
+              // bit 9 to 24 = start time
+              // bit 25 = Starttime type
+              // bit 26 = Not used
+              // bit 27 to 31 = cmd
+              uint32_t payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMSTARTTIME);
+              int16_t pid = (int16_t)(payload & 0x7F);
+              uint8_t stTimeNum = (uint8_t)((payload >> 7) & 0x3);
+              int16_t stTime = (int16_t)((payload >> 9) & 0xFFFF);
+              uint8_t stTimeType = (uint8_t)((payload >> 25) &0x1);
+              break;
+            case ML_PROGRAMDURATION:
+              // bit 0 to 6 = program number (max. is 40)
+              // bit 7 to 14 = sid
+              // bit 15 to 25 = time (min)
+              // bit 26 = Not used
+              // bit 27 to 31 = cmd
+              uint32_t payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDURATION);
+              int16_t pid = (int16_t)(payload & 0x7F);
+              byte sid = (byte)((payload >> 7) & 0xFF);
+              uint16_t duration = (uint16_t)((payload >> 15) & 0xF);
               break;
           }
           MirrorLink.command = 0;
         }
         MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
-        Serial.println(F("STATE: MIRRORLINK_SEND"));
+        Serial.println(F("SATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
         MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
 #endif // defined(MIRRORLINK_OSREMOTE)

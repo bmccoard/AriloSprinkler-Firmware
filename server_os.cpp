@@ -26,6 +26,7 @@
 #include "server_os.h"
 #include "weather.h"
 #include "mqtt.h"
+#include "MirrorLink.h"
 
 // External variables defined in main ion file
 #if defined(ARDUINO)
@@ -961,6 +962,30 @@ void server_change_program() {
 	} else {
 		if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
 	}
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
+	// Send program data over MirrorLink
+	uint32_t payload = 0;
+	// Send program starttime
+	// bit 0 to 6 = program number (max. is 40)
+	// bit 7 to 8 = start time number (max. is 4 for each program)
+	// bit 9 to 24 = start time
+	// bit 25 = Starttime type
+	// bit 26 = Not used
+	// bit 27 to 31 = cmd
+	for (i=0;i<MAX_NUM_STARTTIMES;i++) {
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
+	}
+	// Send program duration
+	// bit 0 to 6 = program number (max. is 40)
+	// bit 7 to 14 = sid
+	// bit 15 to 25 = time (min)
+	// bit 26 = Not used
+	// bit 27 to 31 = cmd
+	for(i=0;i<os.nstations;i++) {
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)((((uint32_t)(prog.durations[i])) << 15) | (((uint32_t)i << 7) | (uint32_t)(pid))));
+	}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
 	handle_return(HTML_SUCCESS);
 }
 
