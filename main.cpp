@@ -1055,6 +1055,35 @@ void check_weather() {
 	}
 }
 
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
+/** Schedule station
+ * This function schedules a station to turn on for a specific time duration
+ */
+void schedule_station(byte sid, uint16_t duration) {
+	byte pid = 99;
+	RuntimeQueueStruct *q = NULL;
+	byte sqi = pd.station_qid[sid];
+	// check if the station already has a schedule
+	if (sqi!=0xFF) {	// if we, we will overwrite the schedule
+	q = pd.queue+sqi;
+	} else {	// otherwise create a new queue element
+	q = pd.enqueue();
+		}							
+	if (q) {
+		q->st = 0;
+		q->dur = duration;
+		q->sid = sid;
+		q->pid = pid;
+		Serial.println(F("Enqueing 1"));
+		Serial.println(q->sid);
+		Serial.println(q->dur);
+	} else {
+		// queue is full
+	}
+	schedule_all_stations(os.now_tz());
+}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
+
 /** Turn on a station
  * This function turns on a scheduled station
  */
@@ -1104,9 +1133,11 @@ void turn_off_station(byte sid, ulong curr_time) {
 			// Send station command over MirrorLink
 			// Payload format: 
 			// bit 0 = status (1 = On, 0 = Off)
-			// bit 1 to 6 = sid
-			// bit 7 to 12 = time(min), 0 if not relevant
-			MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0x3F & sid) << 1));
+			// bit 1 to 8 = sid
+			// bit 9 to 24 = time(sec)
+			// bit 25 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0xFFFF & sid) << 1));
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 		}
 	}
@@ -1195,16 +1226,18 @@ void schedule_all_stations(ulong curr_time) {
 		// Send station command over MirrorLink
 		// Payload format: 
 		// bit 0 = status (1 = On, 0 = Off)
-		// bit 1 to 6 = sid
-		// bit 7 to 12 = time(min)
+		// bit 1 to 8 = sid
+		// bit 9 to 24 = time(sec)
+      	// bit 25 to 26 = Not used
+      	// bit 27 to 31 = cmd
 		Serial.println(F("STATE: Enqueuing to send"));
 		Serial.print(F("Sid"));
 		Serial.println(q->sid);
 		Serial.print(F("Duration: "));
 		Serial.println(q->dur);
-		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (((0x3F & ((q->dur) / 60)) << 7) | ((0x3F & sid) << 1) | 1));
+		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (uint32_t)(((uint32_t)(q->dur) << 9) | (((uint32_t)(sid)) << 1) | (uint32_t)1));
 #else
-		//uint16_t payload = MirrorLinkGetCmd(ML_TESTSTATION);
+		//uint32_t payload = MirrorLinkGetCmd(ML_TESTSTATION);
 		//if (payload != 0) {
 		//}
 #endif //defined(MIRRORLINK_OSREMOTE)

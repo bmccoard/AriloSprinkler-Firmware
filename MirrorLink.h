@@ -34,9 +34,11 @@
 
 // Enum for commands
 enum {
-  ML_NO_CMD = 0,     // No command
-  ML_TESTSTATION,    // read-only (ro)
-	ML_MAX_CMD         // total number of integer options
+  ML_NO_CMD = 0,       // No command
+  ML_TESTSTATION,      // Switch on station for a specific duration in minutes
+  ML_PROGRAMSTARTTIME, // Configure start time of a specific program (max. 4 per program)
+  ML_PROGRAMDURATION,  // Configure duration of a specific station for a specific program (max. 8)
+	ML_MAX_CMD           // total number of integer options
 };
 
 // Enum for transmit/receive status
@@ -46,9 +48,9 @@ enum {
 };
 
 #if defined(MIRRORLINK_OSREMOTE)
-void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload);
+void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
 #else
-uint16_t MirrorLinkGetCmd(uint8_t cmd);
+uint32_t MirrorLinkGetCmd(uint8_t cmd);
 #endif //defined(MIRRORLINK_OSREMOTE)
 
 void handle_mirrorlink_request();

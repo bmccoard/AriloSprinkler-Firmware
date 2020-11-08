@@ -77,14 +77,15 @@ struct MIRRORLINK {
 #if defined(MIRRORLINK_OSREMOTE)
   uint8_t bufferedCommands;                 // Number of buffered commands to be sent
   uint8_t bufferIndex;                      // Index of the element in the buffer to be sent
-  uint16_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
-  uint16_t response;                        // Response from the station to the last command sent
+  uint32_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
+  uint32_t response;                        // Response from the station to the last command sent
 #else
-  uint16_t command;                         // Command to be executed by the station
+  uint32_t command;                         // Command to be executed by the station
 #endif //MIRRORLINK_OSREMOTE
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
+void schedule_station(byte sid, uint16_t duration);
 
 // Set RX pin HIGH and TX pin LOW to switch to RECEIVE
 void enableRX(void)
@@ -150,16 +151,17 @@ void setFlagTx(void) {
 #endif // !defined(MIRRORLINK_DEBUGRF)
 
 #if defined(MIRRORLINK_OSREMOTE)
-void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload) {
+void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
   switch (cmd) {
     // Initial state
     case ML_TESTSTATION:
     	// Buffer message format: 
 			// bit 0 = status (1 = On, 0 = Off)
-			// bit 1 to 6 = sid
-			// bit 7 to 12 = time(min)
-      // bit 13 to 15 = cmd
-      MirrorLink.buffer[0] = (((0x7 & (uint16_t)cmd) << 13) | payload);
+			// bit 1 to 8 = sid
+			// bit 9 to 24 = time(sec)
+      // bit 25 to 26 = Not used
+      // bit 27 to 31 = cmd
+      MirrorLink.buffer[0] = (((0x1F & (uint16_t)cmd) << 27) | payload);
       MirrorLink.bufferedCommands += 1;
       MirrorLink.bufferIndex = 0;
       Serial.println(F("Command: ... "));
@@ -167,14 +169,21 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint16_t payload) {
       Serial.println(payload);
       Serial.println(MirrorLink.buffer[0]);
       break;
+    case ML_PROGRAMSTARTTIME:
+      // Buffer message format:
+      // standard start time (value between 0 to 1440, by bits 0 to 10)
+      break;
+    case ML_PROGRAMDURATION:
+      // Buffer message format:
+      break;
   }
 }
 #else
-uint16_t MirrorLinkGetCmd(uint8_t cmd)
+uint32_t MirrorLinkGetCmd(uint8_t cmd)
 {
-  uint16_t payload;
-  if(cmd == (MirrorLink.command >> 13)) {
-    payload = (MirrorLink.command & 0x1FFF);
+  uint32_t payload;
+  if(cmd == (MirrorLink.command >> 27)) {
+    payload = (MirrorLink.command & 0x7FFFFFF);
   }
   else {
     payload = 0;
@@ -331,8 +340,8 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.module_state = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[2] = {(byte)(MirrorLink.buffer[0] >> 8) , (byte)(0xFF & MirrorLink.buffer[0])};
-  MirrorLink.module_state = lora.startTransmit(byteArr, 2);
+  byte byteArr[4] = {(byte)(0xFF & MirrorLink.buffer[0] >> 24) , (byte)(0xFF & MirrorLink.buffer[0] >> 16) , (byte)(0xFF & MirrorLink.buffer[0] >> 8) , (byte)(0xFF & MirrorLink.buffer[0])};
+  MirrorLink.module_state = lora.startTransmit(byteArr, 4);
 #else
   // TODO: Transmit answer to command
   /*
@@ -340,8 +349,8 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.module_state = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[2] = {(byte)(MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
-  MirrorLink.module_state = lora.startTransmit(byteArr, 2);
+  byte byteArr[4] = {(byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
+  MirrorLink.module_state = lora.startTransmit(byteArr, 4);
 #endif // defined(MIRRORLINK_OSREMOTE)
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
 }
@@ -363,8 +372,8 @@ bool MirrorLinkReceiveStatus(void) {
       byte byteArr[8];
       MirrorLink.module_state = lora.readData(byteArr, 8);
     */
-    byte byteArr[2];
-    MirrorLink.module_state = lora.readData(byteArr, 2);
+    byte byteArr[4];
+    MirrorLink.module_state = lora.readData(byteArr, 4);
 
     // you can also read received data as byte array
     /*
@@ -375,9 +384,9 @@ bool MirrorLinkReceiveStatus(void) {
     if (MirrorLink.module_state == ERR_NONE) {
 
 #if defined(MIRRORLINK_OSREMOTE)
-      MirrorLink.response = ((uint16_t)byteArr[0] << 8) | ((uint16_t)byteArr[1]);
+      MirrorLink.response = (((uint16_t)byteArr[0] << 24) | ((uint16_t)byteArr[1] << 16) | ((uint16_t)byteArr[2] << 8) | ((uint16_t)byteArr[3]));
 #else
-      MirrorLink.command = ((uint16_t)byteArr[0] << 8) | ((uint16_t)byteArr[1]);
+      MirrorLink.command = (((uint16_t)byteArr[0] << 24) | ((uint16_t)byteArr[1] << 16) | ((uint16_t)byteArr[2] << 8) | ((uint16_t)byteArr[3]));
 #endif // defined(MIRRORLINK_OSREMOTE)
       // packet was successfully received
       Serial.println(F("[SX1262] Received packet!"));
@@ -544,40 +553,25 @@ void MirrorLinkState(void) {
         if (MirrorLink.command != 0) {
           Serial.print(F("Command:"));
           Serial.println(MirrorLink.command);
-          Serial.println((MirrorLink.command >> 13));
+          Serial.println((MirrorLink.command >> 27));
           // Execute command
-          // TODO: Check possibilities from set_station_data
-          switch (MirrorLink.command >> 13) {
+          // TODO: Check possibilities from set_station_data and server_change_program
+          switch (MirrorLink.command >> 27) {
             // Initial state
             case ML_TESTSTATION:
-              uint16_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
-              byte sid = (byte) (0x3F & (payload >> 1));
+              // Message format: 
+              // bit 0 = status (1 = On, 0 = Off)
+              // bit 1 to 8 = sid
+              // bit 9 to 24 = time(sec)
+              // bit 25 to 26 = Not used
+              // bit 27 to 31 = cmd
+              uint32_t payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
+              byte sid = (byte) (0xFF & (payload >> 1));
               uint8_t en = (uint8_t) (payload & 0x1);
-              uint16_t timer = (uint16_t) (payload >> 7);
-              byte pid = 99;
-							// check if water time is still valid
-							// because it may end up being zero after scaling
-              RuntimeQueueStruct *q = NULL;
-              byte sqi = pd.station_qid[sid];
-              // check if the station already has a schedule
-              if (sqi!=0xFF) {	// if we, we will overwrite the schedule
-                q = pd.queue+sqi;
-              } else {	// otherwise create a new queue element
-                q = pd.enqueue();
-			        }							
-              if (q) {
-								q->st = 0;
-								q->dur = (timer * 60);
-								q->sid = sid;
-								q->pid = pid;
-                Serial.println(F("Enqueing 1"));
-                Serial.println(q->sid);
-                Serial.println(q->dur);
-							} else {
-								// queue is full
-							}
-              schedule_all_stations(os.now_tz());
-              //os.set_station_bit(sid, en);
+              uint16_t timer = (uint16_t) ((0xFFFF) & (payload >> 9));
+              Serial.print(F("Timer:"));
+              Serial.println(timer);
+              schedule_station(sid, timer);
               break;
           }
           MirrorLink.command = 0;
@@ -588,7 +582,7 @@ void MirrorLinkState(void) {
         MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
-    }
+      }
   }
 }
 
