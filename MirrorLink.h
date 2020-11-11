@@ -24,10 +24,9 @@
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 // Config defines
-//#define MIRRORLINK_DEBUGRF            // If defined, RF send/receive test between remote and station is performed
 #define MIRRORLINK_DUTYCYCLE       100  // Maximum duty cycle allowed in tenths of percentage, default 100 = 10%
 #if defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_BUFFERLENGTH     10  // Maximum command buffer length
+#define MIRRORLINK_BUFFERLENGTH     30  // Maximum command buffer length
 #endif // defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_RXTX_MAX_TIME    60  // Maximum time in seconds to wait for response from station or command / response transmission
 #define MIRRORLINK_RXTX_DEAD_TIME   1   // Time in seconds after receiving a message, to start transmitting one
@@ -36,8 +35,12 @@
 enum {
   ML_NO_CMD = 0,              // No command
   ML_TESTSTATION,             // Switch on station for a specific duration in minutes
+  ML_PROGRAMADDDEL,           // Create/delete a program
+  ML_PROGRAMMAINSETUP,        // Configure program enable, type, use weather, odd/eve
+  ML_PROGRAMDAYS,             // Configure duration program days
   ML_PROGRAMSTARTTIME,        // Configure start time of a specific program (max. 4 per program)
   ML_PROGRAMDURATION,         // Configure duration of a specific station for a specific program (max. 8)
+  ML_SYNCERROR,               // Answer to command showing sync. error between remote and station
 	ML_MAX_CMD                  // total number of integer options
 };
 
@@ -52,8 +55,6 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
 #else
 uint32_t MirrorLinkGetCmd(uint8_t cmd);
 #endif //defined(MIRRORLINK_OSREMOTE)
-
-void handle_mirrorlink_request();
 
 void MirrorLinkInit();
 void MirrorLinkMain();

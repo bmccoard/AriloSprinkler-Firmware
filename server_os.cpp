@@ -814,6 +814,14 @@ void server_delete_program() {
 		pd.eraseall();
 	} else if (pid < pd.nprograms) {
 		pd.del(pid);
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+		// Send program creation request
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 = Add (1) or remove (0)
+		// bit 8 to 16 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (uint32_t)(pid & 0xFF));
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 	} else {
 		handle_return(HTML_DATA_OUTOFBOUND);
 	}
@@ -873,6 +881,9 @@ void server_change_program() {
 #endif
 
 	byte i;
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+	bool newProgram = false;
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 
 	ProgramStruct prog;
 
@@ -957,15 +968,49 @@ void server_change_program() {
 		pd.drem_to_absolute(prog.days);
 	}
 
+    Serial.println(F("Starting to send program messages"));
+	Serial.println(pid);
+
 	if (pid==-1) {
-		if(!pd.add(&prog)) handle_return(HTML_DATA_OUTOFBOUND);
+		byte numPrograms = (int32_t)pd.add(&prog);
+		if(!numPrograms) {
+			Serial.println(F("Shit 1"));
+			handle_return(HTML_DATA_OUTOFBOUND);
+		}
+		else {
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+			newProgram = true;
+			pid = numPrograms - 1;
+			Serial.println(F("Lets modify the program name with its pid"));
+			// Program name needs to be modified to match the pid number
+			sprintf_P(prog.name, "%d", pid);
+			Serial.println(pid);
+			Serial.println(prog.name);
+			Serial.println(pd.nprograms);
+			if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
+			Serial.println(F("Manage to get through 1"));
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+		}
 	} else {
+		Serial.println(F("Lets just modify the program"));
 		if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
 	}
 
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 	// Send program data over MirrorLink
 	uint32_t payload = 0;
+
+	// Send program main setup
+	// bit 0 to 6 = program number (max. is 40)
+	// bit 7 = enable/disable
+	// bit 8 = use weather
+	// bit 9 to 10 = Odd/even restriction
+	// bit 11 to 12 = schedule type
+	// bit 13 to 26 = Not used
+	// bit 27 to 31 = cmd
+	Serial.println(F("Buffering 1"));
+	MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
+
 	// Send program starttime
 	// bit 0 to 6 = program number (max. is 40)
 	// bit 7 to 8 = start time number (max. is 4 for each program)
@@ -974,8 +1019,10 @@ void server_change_program() {
 	// bit 26 = Not used
 	// bit 27 to 31 = cmd
 	for (i=0;i<MAX_NUM_STARTTIMES;i++) {
+		Serial.println(F("Buffering 2"));
 		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
 	}
+
 	// Send program duration
 	// bit 0 to 6 = program number (max. is 40)
 	// bit 7 to 14 = sid
@@ -983,7 +1030,26 @@ void server_change_program() {
 	// bit 26 = Not used
 	// bit 27 to 31 = cmd
 	for(i=0;i<os.nstations;i++) {
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)((((uint32_t)(prog.durations[i])) << 15) | (((uint32_t)i << 7) | (uint32_t)(pid))));
+		Serial.println(F("Buffering 3"));
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)((((uint32_t)(prog.durations[i])) << 15) | (((uint32_t)i) << 7) | (uint32_t)(pid)));
+	}
+
+	// Send program day setup
+	// bit 0 to 6 = program number (max. is 40)
+	// bit 7 to 22 = days
+	// bit 23 to 26 = Not used
+	// bit 27 to 31 = cmd
+	Serial.println(F("Buffering 4"));
+	MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
+
+	if (newProgram == true) {
+		// Send program creation request
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 = Add (1) or remove (0)
+		// bit 8 to 16 = Not used
+		// bit 27 to 31 = cmd
+		Serial.println(F("Buffering 5"));
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
 	}
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
 	handle_return(HTML_SUCCESS);
@@ -1651,6 +1717,16 @@ void server_change_manual() {
 				q->dur = timer;
 				q->sid = sid;
 				q->pid = 99;	// testing stations are assigned program index 99
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+				// Send station command over MirrorLink
+				// Payload format: 
+				// bit 0 = status (1 = On, 0 = Off)
+				// bit 1 to 8 = sid
+				// bit 9 to 24 = time(sec)
+				// bit 25 to 26 = Not used
+				// bit 27 to 31 = cmd
+				MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (uint32_t)(((uint32_t)(q->dur) << 9) | (((uint32_t)(sid)) << 1) | (uint32_t)1));
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 				schedule_all_stations(curr_time);
 			} else {
@@ -1660,6 +1736,16 @@ void server_change_manual() {
 			handle_return(HTML_DATA_MISSING);
 		}
 	} else {	// turn off station
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+		// Send station command over MirrorLink
+		// Payload format: 
+		// bit 0 = status (1 = On, 0 = Off)
+		// bit 1 to 8 = sid
+		// bit 9 to 24 = time(sec)
+		// bit 25 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0xFFFF & sid) << 1));
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 		turn_off_station(sid, curr_time);
 	}
 	handle_return(HTML_SUCCESS);

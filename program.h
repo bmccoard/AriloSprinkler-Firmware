@@ -81,7 +81,7 @@ public:
 	// bi-weekly:days[0][0..6] and [1][0..6] store two weeks
 	// monthly:  days[0][0..5] stores the day of the month (32 means last day of month)
 	// interval: days[0] stores the interval (0 to 255), days[1] stores the starting day remainder (0 to 254)
-	byte days[2];  
+	byte days[2];
 	
 	// When the program is a fixed start time type:
 	//	 up to MAX_NUM_STARTTIMES fixed start times
@@ -144,8 +144,8 @@ public:
 	static byte del(byte pid);
 	static void drem_to_relative(byte days[2]); // absolute to relative reminder conversion
 	static void drem_to_absolute(byte days[2]);
+	static byte load_count();
 private:	
-	static void load_count();
 	static void save_count();
 };
 

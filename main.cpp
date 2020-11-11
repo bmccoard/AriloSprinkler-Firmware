@@ -1055,11 +1055,11 @@ void check_weather() {
 	}
 }
 
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
-/** Schedule station
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+/** Schedule test station
  * This function schedules a station to turn on for a specific time duration
  */
-void schedule_station(byte sid, uint16_t duration) {
+void schedule_test_station(byte sid, uint16_t duration) {
 	byte pid = 99;
 	RuntimeQueueStruct *q = NULL;
 	byte sqi = pd.station_qid[sid];
@@ -1074,15 +1074,40 @@ void schedule_station(byte sid, uint16_t duration) {
 		q->dur = duration;
 		q->sid = sid;
 		q->pid = pid;
-		Serial.println(F("Enqueing 1"));
-		Serial.println(q->sid);
-		Serial.println(q->dur);
 	} else {
 		// queue is full
 	}
 	schedule_all_stations(os.now_tz());
 }
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
+
+/** Change program data 
+ * This function changes program data or adds a new one if non existing
+ */
+void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog) {
+	Serial.println(F("Change program"));
+	Serial.println(pid);
+	Serial.println(pd.nprograms);
+	if (pid == pd.nprograms) {
+		pd.add(prog);
+	} else if ((pid < pd.nprograms) && (pid >= 0)) {
+		pd.modify((byte)pid, prog);
+	} else {
+		// Inconsistency, sync. fail in program, erase all
+		pd.eraseall();
+	}
+}
+
+/** Delete program data 
+ * This function deletes program data
+ */
+void delete_program_data(int32_t pid, byte numprograms) {
+	if (pid > -1) {
+		pd.del(pid);
+	} else {
+		pd.eraseall();
+	}
+}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 /** Turn on a station
  * This function turns on a scheduled station
@@ -1129,16 +1154,6 @@ void turn_off_station(byte sid, ulong curr_time) {
 			// log station run
 			write_log(LOGDATA_STATION, curr_time);
 			push_message(NOTIFY_STATION_OFF, sid, pd.lastrun.duration);
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-			// Send station command over MirrorLink
-			// Payload format: 
-			// bit 0 = status (1 = On, 0 = Off)
-			// bit 1 to 8 = sid
-			// bit 9 to 24 = time(sec)
-			// bit 25 to 26 = Not used
-			// bit 27 to 31 = cmd
-			MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0xFFFF & sid) << 1));
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 		}
 	}
 
@@ -1220,28 +1235,6 @@ void schedule_all_stations(ulong curr_time) {
 		byte sid=q->sid;
 		byte bid=sid>>3;
 		byte s=sid&0x07;
-
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) 
-#if defined(MIRRORLINK_OSREMOTE)
-		// Send station command over MirrorLink
-		// Payload format: 
-		// bit 0 = status (1 = On, 0 = Off)
-		// bit 1 to 8 = sid
-		// bit 9 to 24 = time(sec)
-      	// bit 25 to 26 = Not used
-      	// bit 27 to 31 = cmd
-		Serial.println(F("STATE: Enqueuing to send"));
-		Serial.print(F("Sid"));
-		Serial.println(q->sid);
-		Serial.print(F("Duration: "));
-		Serial.println(q->dur);
-		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (uint32_t)(((uint32_t)(q->dur) << 9) | (((uint32_t)(sid)) << 1) | (uint32_t)1));
-#else
-		//uint32_t payload = MirrorLinkGetCmd(ML_TESTSTATION);
-		//if (payload != 0) {
-		//}
-#endif //defined(MIRRORLINK_OSREMOTE)
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 		// if this is a sequential station and the controller is not in remote extension mode
 		// use sequential scheduling. station delay time apples
