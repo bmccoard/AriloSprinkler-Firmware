@@ -1009,18 +1009,12 @@ void do_loop()
 			reboot_notification = 0;
 			push_message(NOTIFY_REBOOT);
 		}
-
-		// MirrorLink LORA module transceiver state machine
-		#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
-		//MirrorLinkMain();
-		#endif
-
 	}
 
 	// MirrorLink LORA module transceiver state machine
-	#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	MirrorLinkMain();
-	#endif
+#endif
 
 	#if !defined(ARDUINO)
 		delay(1); // For OSPI/OSBO/LINUX, sleep 1 ms to minimize CPU usage

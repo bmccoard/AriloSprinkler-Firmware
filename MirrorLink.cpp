@@ -95,7 +95,7 @@ void enableRX(void)
 {
 	digitalWrite(LORA_RXEN, HIGH);
 	digitalWrite(LORA_TXEN, LOW);
-	delay(100);
+	delay(10);
 }
 
 // Set TX pin HIGH and RX pin LOW to switch to TRANSMIT
@@ -103,7 +103,7 @@ void enableTX(void)
 {
 	digitalWrite(LORA_RXEN, LOW);
 	digitalWrite(LORA_TXEN, HIGH);
-	delay(100);
+	delay(10);
 }
 
 // this function is called when a complete packet
@@ -398,7 +398,7 @@ void MirrorLinkReceiveInit(void) {
   }
 }
 
-// MirrorLink module state machine change function, called once every second
+// MirrorLink module state machine change function
 void MirrorLinkState(void) {
   switch (MirrorLink.status.mirrorlinkState) {
     // Initial state
@@ -642,7 +642,7 @@ void MirrorLinkState(void) {
         Serial.println(F("SATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
         // Delay to allow the remote to turn to rx mode
-        delay(100);
+        delay(20);
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
       }
