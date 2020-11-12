@@ -1083,9 +1083,6 @@ void schedule_test_station(byte sid, uint16_t duration) {
  * This function changes program data or adds a new one if non existing
  */
 void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog) {
-	Serial.println(F("Change program"));
-	Serial.println(pid);
-	Serial.println(pd.nprograms);
 	if (pid == pd.nprograms) {
 		pd.add(prog);
 	} else if ((pid < pd.nprograms) && (pid >= 0)) {
@@ -1099,7 +1096,7 @@ void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog) {
 /** Delete program data 
  * This function deletes program data
  */
-void delete_program_data(int32_t pid, byte numprograms) {
+void delete_program_data(int32_t pid) {
 	if (pid > -1) {
 		pd.del(pid);
 	} else {
@@ -1850,6 +1847,17 @@ void perform_ntp_sync() {
 			last_ntp_result = t;
 		}
 		if (t>0) {
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+			// Send station command over MirrorLink
+			// Payload format:
+			// bit 0 to 7 = Time zone
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_TIMEZONESYNC, (uint32_t)(0xFF & (os.iopts[IOPT_TIMEZONE])));
+			// Payload format: 
+			// bit 0 to 26 = Unix Timestamp in minutes! not seconds
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (t / 60)));
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 			setTime(t);
 			RTC.set(t);
 			DEBUG_PRINTLN(RTC.get());

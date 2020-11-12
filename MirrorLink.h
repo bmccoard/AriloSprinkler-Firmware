@@ -28,8 +28,8 @@
 #if defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_BUFFERLENGTH     30  // Maximum command buffer length
 #endif // defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_RXTX_MAX_TIME    60  // Maximum time in seconds to wait for response from station or command / response transmission
-#define MIRRORLINK_RXTX_DEAD_TIME   0   // Time in seconds after receiving a message, to start transmitting one
+#define MIRRORLINK_RXTX_MAX_TIME     3  // Maximum time in seconds to wait for response from station or command / response transmission
+#define MIRRORLINK_RXTX_DEAD_TIME    0  // Time in seconds after receiving a message, to start transmitting one
 
 // Enum for commands
 enum {
@@ -40,6 +40,8 @@ enum {
   ML_PROGRAMDAYS,             // Configure duration program days
   ML_PROGRAMSTARTTIME,        // Configure start time of a specific program (max. 4 per program)
   ML_PROGRAMDURATION,         // Configure duration of a specific station for a specific program (max. 8)
+  ML_TIMESYNC,                // Command to configure the time in the remote station
+  ML_TIMEZONESYNC,            // Command to configure the time zone in the remote station
   ML_SYNCERROR,               // Answer to command showing sync. error between remote and station
 	ML_MAX_CMD                  // total number of integer options
 };

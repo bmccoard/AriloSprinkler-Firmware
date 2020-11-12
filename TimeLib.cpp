@@ -261,7 +261,7 @@ time_t now() {
 		if (getTimePtr != 0) {
 			time_t t = getTimePtr();
 			if (t != 0) {
-				setTime(t);
+				//setTime(t);
 			} else {
 				nextSyncTime = sysTime + syncInterval;
 				Status = (Status == timeNotSet) ?  timeNotSet : timeNeedsSync;

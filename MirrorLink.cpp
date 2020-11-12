@@ -52,6 +52,7 @@ ProgramStruct mirrorlinkProg;
 #endif
 
 extern ProgramData pd;
+extern OpenSprinkler os;
 
 // SX1262 has the following connections:
 // NSS pin:   18
@@ -88,7 +89,7 @@ struct MIRRORLINK {
 void schedule_all_stations(ulong curr_time);
 void schedule_test_station(byte sid, uint16_t duration);
 void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog);
-void delete_program_data(int32_t pid, byte numprograms);
+void delete_program_data(int32_t pid);
 
 // Set RX pin HIGH and TX pin LOW to switch to RECEIVE
 void enableRX(void)
@@ -103,7 +104,7 @@ void enableTX(void)
 {
 	digitalWrite(LORA_RXEN, LOW);
 	digitalWrite(LORA_TXEN, HIGH);
-	delay(10);
+	delay(25);
 }
 
 // this function is called when a complete packet
@@ -135,6 +136,12 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
 			// bit 9 to 24 = time(sec)
       // bit 25 to 26 = Not used
       // bit 27 to 31 = cmd
+    case ML_PROGRAMADDDEL:
+      // Buffer message format:
+      // bit 0 to 6 = program number (max. is 40)
+      // bit 7 = Add (1) or delete (0)
+      // bit 8 to 16 = Not used
+      // bit 27 to 31 = cmd
     case ML_PROGRAMMAINSETUP:
       // Buffer message format:
       // bit 0 to 6 = program number (max. is 40)
@@ -165,7 +172,14 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // bit 15 to 25 = time (min)
       // bit 26 = Not used
       // bit 27 to 31 = cmd
-    case ML_PROGRAMADDDEL:
+    case ML_TIMESYNC:
+      // Buffer message format:
+      // bit 0 to 26 = Unix Timestamp in minutes! not seconds
+		  // bit 27 to 31 = cmd
+    case ML_TIMEZONESYNC:
+      // Buffer message format:
+      // bit 0 to 7 = Time zone
+      // bit 27 to 31 = cmd
       if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
         MirrorLink.bufferedCommands++;
         MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] = (((uint32_t)(0x1F & (uint16_t)cmd) << 27) | payload);
@@ -448,10 +462,6 @@ void MirrorLinkState(void) {
       MirrorLink.timer = os.now_tz();
       if (  (MirrorLink.timer == os.now_tz())
           &&(MirrorLink.bufferedCommands > 0)) {
-        Serial.print(F("Command to be sent: "));
-        Serial.println((MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 27));
-        Serial.print(F("PID: "));
-        Serial.println((MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] & 0x7F));
         Serial.println(F("STATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
         MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
@@ -464,8 +474,6 @@ void MirrorLinkState(void) {
       // If send process if finished
       // empty the command in the buffer
       // change state to receive
-      Serial.print(F("MirrorLink.timer: "));
-      Serial.println(MirrorLink.timer);
 #if defined(MIRRORLINK_OSREMOTE)
       if (MirrorLinkTransmitStatus() == true) {
         if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
@@ -473,13 +481,8 @@ void MirrorLinkState(void) {
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
-        Serial.print(F("Time: "));
-        Serial.println(MirrorLink.timer);
-        Serial.print(F("Buffered Commands: "));
-        Serial.println(MirrorLink.bufferedCommands);
       }
       else if (MirrorLink.timer <= os.now_tz()) {
-        Serial.println(F("Timeout!!!"));
         MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
@@ -506,7 +509,7 @@ void MirrorLinkState(void) {
         // In case response shows a sync error between remote and station
         // delete all programs and reset response
         if ((MirrorLink.response >> 27) == ML_SYNCERROR) {
-            delete_program_data(-1, pd.nprograms);
+            delete_program_data(-1);
           MirrorLink.response = 0;
         }
 
@@ -526,12 +529,9 @@ void MirrorLinkState(void) {
         uint16_t duration = 0;
         uint8_t usw = 0;
         uint8_t oddeven = 0;
+        uint8_t addProg = 0;
         if (MirrorLink.command != 0) {
-          Serial.print(F("Command: "));
-          Serial.println(MirrorLink.command);
-          Serial.println((MirrorLink.command >> 27));
           // Execute command
-          // TODO: Check possibilities from set_station_data and server_change_program
           switch (MirrorLink.command >> 27) {
             // Initial state
             case ML_TESTSTATION:
@@ -554,29 +554,38 @@ void MirrorLinkState(void) {
               // bit 8 to 16 = Not used
 			        // bit 27 to 31 = cmd
               payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMADDDEL);
+              addProg = ((payload >> 7) & 0x1);
               pid = (int16_t) (0x7F & payload);
               sprintf_P(mirrorlinkProg.name, "%d", pid);
-              // In case of sync issue due to diff. number of programs between remote and station
-              // Remove all programs
-              Serial.print(F("PID: "));
-              Serial.println(pid);
-              Serial.print(F("Number of programs: "));
-              Serial.println(pd.nprograms);
 
-              if(pid != pd.nprograms)
+              // If the request is to add a program
+              if (addProg)
               {
-                // Delete all programs
-                delete_program_data(-1, pd.nprograms);
-                MirrorLink.command = (((uint32_t)ML_SYNCERROR) << 27);
-              }
-              else
-              {
-                if (0x1 & (payload >> 7)) {
+                // In case the new pid does not match the max. program number
+                // SYNC issue identified, remove all programs
+                if (pid != pd.nprograms) {
+                  // Delete all programs
+                  delete_program_data(-1);
+                  MirrorLink.command = (((uint32_t)ML_SYNCERROR) << 27);
+                }
+                // Otherwise create new program
+                else {
                   change_program_data(pid, pd.nprograms, &mirrorlinkProg);
                 }
-                else
-                {
-                  delete_program_data(pid, pd.nprograms);
+              }
+              // Request is to delete a program
+              else
+              {
+                // In case the new pid to be removed is not within the available pid's range
+                // SYNC issue identified, remove all programs
+                if (pid >= pd.nprograms) {
+                  // Delete all programs
+                  delete_program_data(-1);
+                  MirrorLink.command = (((uint32_t)ML_SYNCERROR) << 27);
+                }
+                // Otherwise delete the program
+                else {
+                  delete_program_data(pid);
                 }
               }
               break;
@@ -611,7 +620,6 @@ void MirrorLinkState(void) {
               break;            
             case ML_PROGRAMSTARTTIME:
               // Message format:
-              // Standard start time (value between 0 to 1440, by bits 0 to 10)
               // bit 0 to 6 = program number (max. is 40)
               // bit 7 to 8 = start time number (max. is 4 for each program)
               // bit 9 to 24 = start time
@@ -625,6 +633,7 @@ void MirrorLinkState(void) {
               mirrorlinkProg.starttime_type = (uint8_t)((payload >> 25) & 0x1);
               break;
             case ML_PROGRAMDURATION:
+              // Message format:
               // bit 0 to 6 = program number (max. is 40)
               // bit 7 to 14 = sid
               // bit 15 to 25 = time (min)
@@ -635,6 +644,22 @@ void MirrorLinkState(void) {
               sid = (byte)((payload >> 7) & 0xFF);
               mirrorlinkProg.durations[sid] = (uint16_t)(60 * ((payload >> 15) & 0x7FF));
               break;
+            case ML_TIMESYNC:
+              // Message format:
+              // bit 0 to 26 = Unix Timestamp in minutes! not seconds
+		          // bit 27 to 31 = cmd
+              payload = MirrorLinkGetCmd((uint8_t)ML_TIMESYNC);
+              setTime((time_t)(60*(0x7FFFFFF & payload)));
+              RTC.set((time_t)(60*(0x7FFFFFF & payload)));
+              break;
+            case ML_TIMEZONESYNC:
+            	// Payload format:
+		          // bit 0 to 7 = Time zone
+		          // bit 27 to 31 = cmd
+              payload = MirrorLinkGetCmd((uint8_t)ML_TIMEZONESYNC);
+              os.iopts[IOPT_TIMEZONE] = (byte)(0xFF & payload);
+              os.iopts_save();
+              break;
           }
           MirrorLink.command = 0;
         }
@@ -642,7 +667,7 @@ void MirrorLinkState(void) {
         Serial.println(F("SATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
         // Delay to allow the remote to turn to rx mode
-        delay(20);
+        delay(25);
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
       }
@@ -693,11 +718,9 @@ void MirrorLinkWork(void) {
         MirrorLinkTransmit();
       }
 #endif // defined(MIRRORLINK_OSREMOTE)
-      //if (MirrorLink.timer > 0) MirrorLink.timer--;
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
-      //if (MirrorLink.timer > 0) MirrorLink.timer--;
       break;
   }
 }
