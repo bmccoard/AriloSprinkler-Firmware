@@ -73,7 +73,7 @@ typedef union {
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  uint32_t timer;                           // Timer in seconds to control send timing
+  time_t timer;                             // Timer in seconds to control send timing
   int16_t module_state;                     // LORA module state
   MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
 #if defined(MIRRORLINK_OSREMOTE)
@@ -195,7 +195,7 @@ void MirrorLinkInit(void) {
   MirrorLink.status.enableInterrupt = (uint8_t)true;
   MirrorLink.status.mirrorlinkState = MIRRORLINK_INIT;
   MirrorLink.status.flagRxTx = ML_RECEIVING;
-  MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+  MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -203,7 +203,16 @@ void MirrorLinkInit(void) {
 // Intern program to store program data sent by remote
   sprintf_P(mirrorlinkProg.name, "%d", 1);
   mirrorlinkProg.enabled = 0;
+  mirrorlinkProg.use_weather = 0;
+  mirrorlinkProg.oddeven = 0;
+  mirrorlinkProg.type = 0;
+  mirrorlinkProg.starttime_type = 0;
+  mirrorlinkProg.dummy1 = 0;
+  mirrorlinkProg.days[0] = 0;
+  mirrorlinkProg.days[1] = 0;
+  for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
   for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+  sprintf_P(mirrorlinkProg.name, "%d", 0);
 #endif // defined(MIRRORLINK_OSREMOTE)
 
   // TODO: Change this with flash check of associated adress:
@@ -320,19 +329,9 @@ bool MirrorLinkReceiveStatus(void) {
     // reset flag
     MirrorLink.status.receivedFlag = (uint8_t)false;
 
-    // You can read received data as byte array
-    /*
-      byte byteArr[8];
-      MirrorLink.module_state = lora.readData(byteArr, 8);
-    */
+    // Read received data as byte array
     byte byteArr[4];
     MirrorLink.module_state = lora.readData(byteArr, 4);
-
-    // you can also read received data as byte array
-    /*
-      byte byteArr[8];
-      MirrorLink.module_state = lora.readData(byteArr, 8);
-    */
 
     if (MirrorLink.module_state == ERR_NONE) {
 
@@ -446,8 +445,8 @@ void MirrorLinkState(void) {
       // AND buffer not empty
       // change state to send
       // TODO: Correct timer use
-      MirrorLink.timer = 0;
-      if (  (MirrorLink.timer == 0)
+      MirrorLink.timer = os.now_tz();
+      if (  (MirrorLink.timer == os.now_tz())
           &&(MirrorLink.bufferedCommands > 0)) {
         Serial.print(F("Command to be sent: "));
         Serial.println((MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 27));
@@ -455,7 +454,7 @@ void MirrorLinkState(void) {
         Serial.println((MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] & 0x7F));
         Serial.println(F("STATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
-        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         MirrorLinkTransmit();
       }
       break;
@@ -470,7 +469,7 @@ void MirrorLinkState(void) {
 #if defined(MIRRORLINK_OSREMOTE)
       if (MirrorLinkTransmitStatus() == true) {
         if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
-        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
@@ -479,17 +478,17 @@ void MirrorLinkState(void) {
         Serial.print(F("Buffered Commands: "));
         Serial.println(MirrorLink.bufferedCommands);
       }
-      else if (MirrorLink.timer == 0) {
+      else if (MirrorLink.timer <= os.now_tz()) {
         Serial.println(F("Timeout!!!"));
-        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         MirrorLinkReceiveInit();
       }
 #else
       if (   (MirrorLinkTransmitStatus() == true)
-          || (MirrorLink.timer == 0)) {
-        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+          || (MirrorLink.timer <= os.now_tz())) {
+        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
@@ -503,7 +502,7 @@ void MirrorLinkState(void) {
       // OR timeout
       // change state to Buffering
       if (   (MirrorLinkReceiveStatus() == true)
-          || (MirrorLink.timer == 0)) {
+          || (MirrorLink.timer <= os.now_tz())) {
         // In case response shows a sync error between remote and station
         // delete all programs and reset response
         if ((MirrorLink.response >> 27) == ML_SYNCERROR) {
@@ -511,10 +510,7 @@ void MirrorLinkState(void) {
           MirrorLink.response = 0;
         }
 
-        //Arreglar problema Command to be sent: 7!!! (ML_SYNCERROR)
-
-
-        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
 #else
@@ -637,15 +633,16 @@ void MirrorLinkState(void) {
               payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDURATION);
               pid = (int16_t)(payload & 0x7F);
               sid = (byte)((payload >> 7) & 0xFF);
-              mirrorlinkProg.durations[sid] = (uint16_t)((payload >> 15) & 0xFFFF);
+              mirrorlinkProg.durations[sid] = (uint16_t)(60 * ((payload >> 15) & 0x7FF));
               break;
           }
           MirrorLink.command = 0;
         }
-        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("SATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
-        MirrorLink.timer = MIRRORLINK_RXTX_MAX_TIME;
+        // Delay to allow the remote to turn to rx mode
+        delay(100);
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
       }
@@ -691,16 +688,16 @@ void MirrorLinkWork(void) {
       // Calculate idle time until next send period
 #else
       // Send answer if not yet transmitted
-      if (   (MirrorLink.timer == (MIRRORLINK_RXTX_MAX_TIME - MIRRORLINK_RXTX_DEAD_TIME))
+      if (   (MirrorLink.timer == (os.now_tz() + (time_t)(MIRRORLINK_RXTX_MAX_TIME - MIRRORLINK_RXTX_DEAD_TIME)))
           && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
         MirrorLinkTransmit();
       }
 #endif // defined(MIRRORLINK_OSREMOTE)
-      if (MirrorLink.timer > 0) MirrorLink.timer--;
+      //if (MirrorLink.timer > 0) MirrorLink.timer--;
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
-      if (MirrorLink.timer > 0) MirrorLink.timer--;
+      //if (MirrorLink.timer > 0) MirrorLink.timer--;
       break;
   }
 }

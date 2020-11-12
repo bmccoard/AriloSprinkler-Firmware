@@ -1012,10 +1012,15 @@ void do_loop()
 
 		// MirrorLink LORA module transceiver state machine
 		#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
-		MirrorLinkMain();
+		//MirrorLinkMain();
 		#endif
 
 	}
+
+	// MirrorLink LORA module transceiver state machine
+	#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	MirrorLinkMain();
+	#endif
 
 	#if !defined(ARDUINO)
 		delay(1); // For OSPI/OSBO/LINUX, sleep 1 ms to minimize CPU usage

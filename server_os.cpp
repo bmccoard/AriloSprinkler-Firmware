@@ -1031,7 +1031,7 @@ void server_change_program() {
 	// bit 27 to 31 = cmd
 	for(i=0;i<os.nstations;i++) {
 		Serial.println(F("Buffering 3"));
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)((((uint32_t)(prog.durations[i])) << 15) | (((uint32_t)i) << 7) | (uint32_t)(pid)));
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)(((uint32_t)(0x7FF & ((prog.durations[i]) / 60)) << 15) | (((uint32_t)i) << 7) | (uint32_t)(pid)));
 	}
 
 	// Send program day setup
