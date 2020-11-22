@@ -714,11 +714,6 @@ void OpenSprinkler::begin() {
 
 #if defined(ESP32)
     if(!Wire.begin(SDA_PIN,SCL_PIN)) DEBUG_PRINT("Error initiating I2C");
-	
-	// Initialize MirrorLink LORA module if present
-	#if defined(MIRRORLINK_ENABLE)
-	MirrorLinkInit();
-	#endif
 
 #ifdef ENABLE_DEBUG
     scan_i2c();
@@ -1005,6 +1000,11 @@ void OpenSprinkler::begin() {
 	
 	// detect and check RTC type
 	RTC.detect();
+
+	// Initialize MirrorLink LORA module if present
+#if defined(ESP32)
+	MirrorLinkInit();
+#endif
 
 #else
 	DEBUG_PRINTLN(get_runtime_path());

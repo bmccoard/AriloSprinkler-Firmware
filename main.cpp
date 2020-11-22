@@ -1060,23 +1060,34 @@ void check_weather() {
  */
 void schedule_test_station(byte sid, uint16_t duration) {
 	byte pid = 99;
+	unsigned long curr_time = os.now_tz();
 	RuntimeQueueStruct *q = NULL;
 	byte sqi = pd.station_qid[sid];
+	reset_all_stations_immediate();
 	// check if the station already has a schedule
 	if (sqi!=0xFF) {	// if we, we will overwrite the schedule
-	q = pd.queue+sqi;
+		q = pd.queue+sqi;
 	} else {	// otherwise create a new queue element
-	q = pd.enqueue();
-		}							
-	if (q) {
-		q->st = 0;
-		q->dur = duration;
-		q->sid = sid;
-		q->pid = pid;
-	} else {
-		// queue is full
+		q = pd.enqueue();
 	}
-	schedule_all_stations(os.now_tz());
+	Serial.print(F("SQI: "));
+	Serial.println(sqi);
+	Serial.print(F("SID to enable: "));
+	Serial.println(sid);
+	if (duration > 0) {
+		if (q) {
+			q->st = 0;
+			q->dur = duration;
+			q->sid = sid;
+			q->pid = pid;
+			schedule_all_stations(curr_time);
+		} else {
+			// queue is full
+		}
+	}
+	else {
+		turn_off_station(sid, curr_time);
+	}
 }
 
 /** Change program data 
@@ -1847,6 +1858,9 @@ void perform_ntp_sync() {
 			last_ntp_result = t;
 		}
 		if (t>0) {
+			setTime(t);
+			RTC.set(t);
+			DEBUG_PRINTLN(RTC.get());
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 			// Send station command over MirrorLink
 			// Payload format:
@@ -1857,10 +1871,8 @@ void perform_ntp_sync() {
 			// bit 0 to 26 = Unix Timestamp in minutes! not seconds
 			// bit 27 to 31 = cmd
 			MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (t / 60)));
+			//MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (os.now_tz() / 60)));
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-			setTime(t);
-			RTC.set(t);
-			DEBUG_PRINTLN(RTC.get());
 			#if !defined(ESP8266) && !defined(ESP32)
 			// if rtc was uninitialized and now it is, restart
 			if(rtc_zero && now()>978307200L) {

@@ -1443,7 +1443,7 @@ void server_change_options()
 	char *p = NULL;
 	if(!process_password()) return;
 	if (m_client)
-		p = get_buffer;  
+		p = get_buffer;
 #else  
 	char *p = get_buffer;
 #endif

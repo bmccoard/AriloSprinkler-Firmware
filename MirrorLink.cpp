@@ -23,6 +23,7 @@
 #include "MirrorLink.h"
 #include "server_os.h"
 #include <RadioLib.h>
+#include "weather.h"
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
@@ -96,7 +97,7 @@ void enableRX(void)
 {
 	digitalWrite(LORA_RXEN, HIGH);
 	digitalWrite(LORA_TXEN, LOW);
-	delay(10);
+	delay(100);
 }
 
 // Set TX pin HIGH and RX pin LOW to switch to TRANSMIT
@@ -104,7 +105,7 @@ void enableTX(void)
 {
 	digitalWrite(LORA_RXEN, LOW);
 	digitalWrite(LORA_TXEN, HIGH);
-	delay(25);
+	delay(100);
 }
 
 // this function is called when a complete packet
@@ -180,6 +181,10 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // Buffer message format:
       // bit 0 to 7 = Time zone
       // bit 27 to 31 = cmd
+    case ML_CURRENTREQUEST:
+      // TODO:
+    case ML_EMERGENCYSHUTDOWN:
+      // TODO:
       if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
         MirrorLink.bufferedCommands++;
         MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] = (((uint32_t)(0x1F & (uint16_t)cmd) << 27) | payload);
@@ -256,20 +261,62 @@ void MirrorLinkInit(void) {
 	// current limit:               60 mA
 	// preamble length:             8 symbols
 	// CRC:                         enabled
-	MirrorLink.module_state = lora.begin(868.0, 125.0, 7, 5, 0x1424, 0, 8);
-	  if (MirrorLink.module_state == ERR_NONE) {
+	MirrorLink.module_state = lora.begin(866.2, 125.0, 12, 5, 0x1424, 22, 8, (float)(1.8), true);
+	if (MirrorLink.module_state == ERR_NONE) {
     Serial.println(F("success!"));
 	} else {
 		Serial.print(F("failed, code "));
 		Serial.println(MirrorLink.module_state);
 	}
-	// eByte E22-900M uses DIO3 to supply the external TCXO
-	if (lora.setTCXO(2.4) == ERR_INVALID_TCXO_VOLTAGE)
-	{
-		Serial.println(F("Selected TCXO voltage is invalid for this module!"));
+
+  // Current limitation
+  MirrorLink.module_state = lora.setCurrentLimit(120.0);
+	if (MirrorLink.module_state == ERR_INVALID_CURRENT_LIMIT) {
+    Serial.println(F("Current limit configure exceedes max.!"));
 	}
 
-	// set the function that will be called
+  // Set SX126x_REG_RX_GAIN to 0x96 -> LNA +3dB gain   SX126xWriteRegister( SX126x_REG_RX_GAIN, 0x96 );
+  uint16_t modReg = 0x08AC; //SX126X_REG_RX_GAIN
+  uint8_t modData[1] = { 0x96 };
+  MirrorLink.module_state = lora.writeRegister(modReg, modData, 1); // max LNA gain, increase current by ~2mA for around ~3dB in sensivity
+	if (MirrorLink.module_state != ERR_NONE) {
+    Serial.println(F("LNA max gain not set successfully!"));
+	}
+
+	// Serial.print(F("[SX1262] Activating LDRO ... "));
+	// // Activate automatic LDRO optimization for long symbol duration SX1262 
+	// MirrorLink.module_state = lora.autoLDRO();
+	// if (MirrorLink.module_state == ERR_NONE) {
+  //   Serial.println(F("success!"));
+	// } else {
+	// 	Serial.print(F("failed, code "));
+	// 	Serial.println(MirrorLink.module_state);
+	// }
+
+  // Serial.print(F("[SX1262] Setting TCXO ... "));
+	// // Activate automatic LDRO optimization for long symbol duration SX1262 
+	// MirrorLink.module_state = lora.setTCXO(float(1.8), 5000);
+	// if (MirrorLink.module_state == ERR_NONE) {
+  //   Serial.println(F("success!"));
+	// } else {
+	// 	Serial.print(F("failed, code "));
+	// 	Serial.println(MirrorLink.module_state);
+	// }
+
+	// eByte E22-900M uses DIO3 to supply the external TCXO
+	//if (lora.setTCXO(2.4) == ERR_INVALID_TCXO_VOLTAGE)
+  // if (lora.setTCXO(1.8) == ERR_INVALID_TCXO_VOLTAGE)
+	// {
+	// 	Serial.println(F("Selected TCXO voltage is invalid for this module!"));
+	// }
+
+  // Set PA config
+  // if (lora.setPaConfig(0x04, 16) == ERR_INVALID_TCXO_VOLTAGE)
+	// {
+	// 	Serial.println(F("PA configuration is invalid for this module!"));
+	// }
+
+	// Set the function that will be called
 	// when new packet is transmitted or received
   lora.setDio1Action(setFlag);
 }
@@ -289,10 +336,6 @@ bool MirrorLinkTransmitStatus(void) {
       // NOTE: when using interrupt-driven transmit method,
       //       it is not possible to automatically measure
       //       transmission data rate using getDataRate()
-
-#if defined(MIRRORLINK_OSREMOTE)
-      MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] = 0;
-#endif // defined(MIRRORLINK_OSREMOTE)
       txSuccessful = true;
     } 
     else {
@@ -327,6 +370,7 @@ void MirrorLinkTransmit(void) {
   */
   byte byteArr[4] = {(byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
   MirrorLink.module_state = lora.startTransmit(byteArr, 4);
+  MirrorLink.command = 0;
 #endif // defined(MIRRORLINK_OSREMOTE)
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
 }
@@ -476,7 +520,6 @@ void MirrorLinkState(void) {
       // change state to receive
 #if defined(MIRRORLINK_OSREMOTE)
       if (MirrorLinkTransmitStatus() == true) {
-        if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
         MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
@@ -502,20 +545,44 @@ void MirrorLinkState(void) {
     case MIRRORLINK_RECEIVE:
 #if defined(MIRRORLINK_OSREMOTE)
       // If confirmation of buffer commands received
-      // OR timeout
       // change state to Buffering
-      if (   (MirrorLinkReceiveStatus() == true)
-          || (MirrorLink.timer <= os.now_tz())) {
+      if (MirrorLinkReceiveStatus() == true) {
         // In case response shows a sync error between remote and station
         // delete all programs and reset response
         if ((MirrorLink.response >> 27) == ML_SYNCERROR) {
-            delete_program_data(-1);
-          MirrorLink.response = 0;
+          delete_program_data(-1);
+          Serial.println(F("Sync error with remote, reset program data!"));
+        }
+        
+        // If response different than last command sent then report error
+        if (MirrorLink.response != MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)]) {
+          Serial.println(F("Station response does not match command sent!"));
         }
 
+        // Report command sent
+        if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
+        
+        MirrorLink.response = 0;
         MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+      }
+
+      // If timeout
+      // Report error and change state as well to Buffering
+      if(MirrorLink.timer <= os.now_tz()) {
+
+        // Report error
+        Serial.println(F("No answer received from station!"));
+
+        // Command is lost, do not retry
+        if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
+        
+        MirrorLink.response = 0;
+        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+        Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+      }   
 #else
       // If commands received
       // execute and change state to Send
@@ -658,19 +725,26 @@ void MirrorLinkState(void) {
 		          // bit 27 to 31 = cmd
               payload = MirrorLinkGetCmd((uint8_t)ML_TIMEZONESYNC);
               os.iopts[IOPT_TIMEZONE] = (byte)(0xFF & payload);
+              os.iopts[IOPT_USE_NTP] = 0;
               os.iopts_save();
+              //os.status.req_ntpsync = 1;
+              //os.weather_update_flag |= WEATHER_UPDATE_TZ;
+              break;
+            case ML_CURRENTREQUEST:
+              // TODO:
+            case ML_EMERGENCYSHUTDOWN:
+              // TODO:
               break;
           }
-          MirrorLink.command = 0;
         }
         MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("SATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
         // Delay to allow the remote to turn to rx mode
-        delay(25);
+        delay(100);
+      }
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
-      }
   }
 }
 
