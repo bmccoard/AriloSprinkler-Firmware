@@ -215,7 +215,14 @@ void ui_state_machine() {
 					ui_state = UI_STATE_DISP_IP;					
 				} else {	// if no other button is clicked, reboot
 					if(!ui_confirm(PSTR("Reboot device?"))) {ui_state = UI_STATE_DEFAULT; break;}
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+					// Send program creation request
+					// bit 0 to 26 = free
+					// bit 27 to 31 = cmd
+					MirrorLinkBuffCmd((uint8_t)ML_STATIONREBOOT, (uint32_t)(0));
+#else
 					os.reboot_dev(REBOOT_CAUSE_BUTTON);
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 				}
 			} else {	// clicking B2: display MAC
 				os.lcd.clear(0, 1);

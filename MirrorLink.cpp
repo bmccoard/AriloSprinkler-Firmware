@@ -63,14 +63,16 @@ extern OpenSprinkler os;
 SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_DIO2, LORA_BUSY);
 
 typedef union {
-  uint8_t data;
+  uint16_t data;
   struct {
-    uint8_t mirrorlinkState : 3;      // Operation mode of the MirrorLink system
-    uint8_t receivedFlag : 1;         // Flag to indicate that a packet was received
-    uint8_t transmittedFlag : 1;      // Flag to indicate that a packet was sent
-    uint8_t enableInterrupt : 1;      // Disable interrupt when it's not needed
-    uint8_t associated : 1;           // Shows if OS device is associated
-    uint8_t flagRxTx : 1;             // Flag to indicate if module is receiving or transmitting
+    uint16_t mirrorlinkState : 3;      // Operation mode of the MirrorLink system
+    uint16_t receivedFlag : 1;         // Flag to indicate that a packet was received
+    uint16_t transmittedFlag : 1;      // Flag to indicate that a packet was sent
+    uint16_t enableInterrupt : 1;      // Disable interrupt when it's not needed
+    uint16_t associated : 1;           // Shows if OS device is associated
+    uint16_t flagRxTx : 1;             // Flag to indicate if module is receiving or transmitting
+    uint16_t rebootRequest : 1;        // Reboot request
+    uint16_t free : 7;                 // Free bits
   };
 } MirrorLinkStateBitfield;
 
@@ -119,10 +121,10 @@ void setFlag(void) {
   }
 
   if (MirrorLink.status.flagRxTx == ML_RECEIVING) {
-    MirrorLink.status.receivedFlag = (uint8_t)true;
+    MirrorLink.status.receivedFlag = (uint16_t)true;
   }
   else {
-    MirrorLink.status.transmittedFlag = (uint8_t)true;
+    MirrorLink.status.transmittedFlag = (uint16_t)true;
   }
 }
 
@@ -184,6 +186,7 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
     case ML_CURRENTREQUEST:
       // TODO:
     case ML_EMERGENCYSHUTDOWN:
+    case ML_STATIONREBOOT:
       // TODO:
       if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
         MirrorLink.bufferedCommands++;
@@ -209,11 +212,12 @@ uint32_t MirrorLinkGetCmd(uint8_t cmd)
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
   MirrorLink.module_state = ERR_NONE;
-  MirrorLink.status.receivedFlag = (uint8_t)false;
-  MirrorLink.status.transmittedFlag = (uint8_t)false;
-  MirrorLink.status.enableInterrupt = (uint8_t)true;
+  MirrorLink.status.receivedFlag = (uint16_t)false;
+  MirrorLink.status.transmittedFlag = (uint16_t)false;
+  MirrorLink.status.enableInterrupt = (uint16_t)true;
   MirrorLink.status.mirrorlinkState = MIRRORLINK_INIT;
   MirrorLink.status.flagRxTx = ML_RECEIVING;
+  MirrorLink.status.rebootRequest = (uint16_t)false;
   MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
@@ -235,7 +239,7 @@ void MirrorLinkInit(void) {
 #endif // defined(MIRRORLINK_OSREMOTE)
 
   // TODO: Change this with flash check of associated adress:
-  MirrorLink.status.associated = (uint8_t)true;
+  MirrorLink.status.associated = (uint16_t)true;
 
 	Serial.begin(115200);
 
@@ -326,8 +330,8 @@ bool MirrorLinkTransmitStatus(void) {
   if (MirrorLink.status.transmittedFlag == (uint8_t)true) {
     // disable the interrupt service routine while
     // processing the data
-    MirrorLink.status.enableInterrupt = (uint8_t)false;
-    MirrorLink.status.transmittedFlag = (uint8_t)false;
+    MirrorLink.status.enableInterrupt = (uint16_t)false;
+    MirrorLink.status.transmittedFlag = (uint16_t)false;
 
     if (MirrorLink.module_state == ERR_NONE) {
       // packet was successfully sent
@@ -342,7 +346,7 @@ bool MirrorLinkTransmitStatus(void) {
       Serial.print(F("failed, code "));
       Serial.println(MirrorLink.module_state);
     }
-    MirrorLink.status.enableInterrupt = (uint8_t)true;
+    MirrorLink.status.enableInterrupt = (uint16_t)true;
   }
   return txSuccessful;
 }
@@ -382,10 +386,10 @@ bool MirrorLinkReceiveStatus(void) {
 
     // disable the interrupt service routine while
     // processing the data
-    MirrorLink.status.enableInterrupt = (uint8_t)false;
+    MirrorLink.status.enableInterrupt = (uint16_t)false;
 
     // reset flag
-    MirrorLink.status.receivedFlag = (uint8_t)false;
+    MirrorLink.status.receivedFlag = (uint16_t)false;
 
     // Read received data as byte array
     byte byteArr[4];
@@ -435,7 +439,7 @@ bool MirrorLinkReceiveStatus(void) {
 
     // we're ready to receive more packets,
     // enable interrupt service routine
-    MirrorLink.status.enableInterrupt = (uint8_t)true;
+    MirrorLink.status.enableInterrupt = (uint16_t)true;
   }
   return rxSuccessful;
 }
@@ -734,6 +738,11 @@ void MirrorLinkState(void) {
               // TODO:
             case ML_EMERGENCYSHUTDOWN:
               // TODO:
+              break;
+            case ML_STATIONREBOOT:
+              // Reboot
+              MirrorLink.status.rebootRequest = (uint16_t)true;
+              os.reboot_dev(REBOOT_CAUSE_MIRRORLINK);
               break;
           }
         }

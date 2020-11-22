@@ -45,7 +45,8 @@ enum {
   ML_CURRENTREQUEST,          // Command to request the station to send its current to the remote
   ML_EMERGENCYSHUTDOWN,       // Command to shutoff all outputs in the remote station
   ML_SYNCERROR,               // Answer to command showing sync. error between remote and station
-	ML_MAX_CMD                  // total number of integer options
+	ML_STATIONREBOOT,           // Perform a reboot
+  ML_MAX_CMD                  // total number of commands
 };
 
 // Enum for transmit/receive status
