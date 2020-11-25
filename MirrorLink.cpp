@@ -54,6 +54,7 @@ ProgramStruct mirrorlinkProg;
 
 extern ProgramData pd;
 extern OpenSprinkler os;
+extern char tmp_buffer[];
 
 // SX1262 has the following connections:
 // NSS pin:   18
@@ -72,13 +73,15 @@ typedef union {
     uint16_t associated : 1;           // Shows if OS device is associated
     uint16_t flagRxTx : 1;             // Flag to indicate if module is receiving or transmitting
     uint16_t rebootRequest : 1;        // Reboot request
-    uint16_t free : 7;                 // Free bits
+    uint16_t stayalive : 1;            // Bit to indicate if the stayalive feature is active
+    uint16_t free : 6;                 // Free bits
   };
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  time_t timer;                             // Timer in seconds to control send timing
-  int16_t module_state;                     // LORA module state
+  time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
+  time_t sendTimer;                         // Timer in seconds to control send timing
+  int16_t moduleState;                      // LORA module state
   MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
 #if defined(MIRRORLINK_OSREMOTE)
   uint8_t bufferedCommands;                 // Number of buffered commands to be sent
@@ -86,6 +89,9 @@ struct MIRRORLINK {
   uint32_t response;                        // Response from the station to the last command sent
 #else
   uint32_t command;                         // Command to be executed by the station
+  int32_t latitude;                         // Latitude of the remote station
+  int32_t longitude;                        // Longitude of the remote station
+  time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
 #endif //MIRRORLINK_OSREMOTE
 } MirrorLink;
 
@@ -187,6 +193,30 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // TODO:
     case ML_EMERGENCYSHUTDOWN:
     case ML_STATIONREBOOT:
+      // Reboot:
+    case ML_LATITUDE:
+      // Buffer message format:
+      // bit 0 to 23 = latitude
+		  // bit 24 to 26 = Not used
+		  // bit 27 to 31 = cmd
+    case ML_LONGITUDE:
+      // Buffer message format:
+      // bit 0 to 23 = longitude
+		  // bit 24 to 26 = Not used
+		  // bit 27 to 31 = cmd
+    case ML_SUNRISE:      
+      // TODO:
+    case ML_SUNSET:
+      // TODO:
+    case ML_RAINDELAYSTOPTIME:
+      // TODO:
+    case ML_STAYALIVE:
+      // Payload format: 
+      // bit 0 to 26 = Stayalive configured counter
+      // bit 27 to 31 = cmd
+    case ML_APC:
+      // TODO:
+    case ML_CHANNEL:
       // TODO:
       if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
         MirrorLink.bufferedCommands++;
@@ -211,20 +241,21 @@ uint32_t MirrorLinkGetCmd(uint8_t cmd)
 
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
-  MirrorLink.module_state = ERR_NONE;
+  MirrorLink.moduleState = ERR_NONE;
   MirrorLink.status.receivedFlag = (uint16_t)false;
   MirrorLink.status.transmittedFlag = (uint16_t)false;
   MirrorLink.status.enableInterrupt = (uint16_t)true;
+  MirrorLink.status.stayalive = (uint16_t)true;
   MirrorLink.status.mirrorlinkState = MIRRORLINK_INIT;
   MirrorLink.status.flagRxTx = ML_RECEIVING;
   MirrorLink.status.rebootRequest = (uint16_t)false;
-  MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+  MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+  MirrorLink.stayAliveTimer = os.now_tz() + (time_t)MIRRORLINK_LINKALIVE_PERIOD;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
 #else
 // Intern program to store program data sent by remote
-  sprintf_P(mirrorlinkProg.name, "%d", 1);
   mirrorlinkProg.enabled = 0;
   mirrorlinkProg.use_weather = 0;
   mirrorlinkProg.oddeven = 0;
@@ -235,6 +266,7 @@ void MirrorLinkInit(void) {
   mirrorlinkProg.days[1] = 0;
   for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
   for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+  MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_LINKALIVE_PERIOD;
   sprintf_P(mirrorlinkProg.name, "%d", 0);
 #endif // defined(MIRRORLINK_OSREMOTE)
 
@@ -265,46 +297,48 @@ void MirrorLinkInit(void) {
 	// current limit:               60 mA
 	// preamble length:             8 symbols
 	// CRC:                         enabled
-	MirrorLink.module_state = lora.begin(866.2, 125.0, 12, 5, 0x1424, 22, 8, (float)(1.8), true);
-	if (MirrorLink.module_state == ERR_NONE) {
+	MirrorLink.moduleState = lora.begin(866.2, 125.0, 12, 5, 0x1424, 22, 8, (float)(1.8), true);
+	if (MirrorLink.moduleState == ERR_NONE) {
     Serial.println(F("success!"));
 	} else {
 		Serial.print(F("failed, code "));
-		Serial.println(MirrorLink.module_state);
+		Serial.println(MirrorLink.moduleState);
 	}
 
   // Current limitation
-  MirrorLink.module_state = lora.setCurrentLimit(120.0);
-	if (MirrorLink.module_state == ERR_INVALID_CURRENT_LIMIT) {
+  MirrorLink.moduleState = lora.setCurrentLimit(120.0);
+	if (MirrorLink.moduleState == ERR_INVALID_CURRENT_LIMIT) {
     Serial.println(F("Current limit configure exceedes max.!"));
 	}
 
+#if defined(MIRRORLINK_MODRADIOLIB)
   // Set SX126x_REG_RX_GAIN to 0x96 -> LNA +3dB gain   SX126xWriteRegister( SX126x_REG_RX_GAIN, 0x96 );
   uint16_t modReg = 0x08AC; //SX126X_REG_RX_GAIN
   uint8_t modData[1] = { 0x96 };
-  MirrorLink.module_state = lora.writeRegister(modReg, modData, 1); // max LNA gain, increase current by ~2mA for around ~3dB in sensivity
-	if (MirrorLink.module_state != ERR_NONE) {
+  MirrorLink.moduleState = lora.writeRegister(modReg, modData, 1); // max LNA gain, increase current by ~2mA for around ~3dB in sensivity
+	if (MirrorLink.moduleState != ERR_NONE) {
     Serial.println(F("LNA max gain not set successfully!"));
 	}
+#endif //defined(MIRRORLINK_MODRADIOLIB)
 
 	// Serial.print(F("[SX1262] Activating LDRO ... "));
 	// // Activate automatic LDRO optimization for long symbol duration SX1262 
-	// MirrorLink.module_state = lora.autoLDRO();
-	// if (MirrorLink.module_state == ERR_NONE) {
+	// MirrorLink.moduleState = lora.autoLDRO();
+	// if (MirrorLink.moduleState == ERR_NONE) {
   //   Serial.println(F("success!"));
 	// } else {
 	// 	Serial.print(F("failed, code "));
-	// 	Serial.println(MirrorLink.module_state);
+	// 	Serial.println(MirrorLink.moduleState);
 	// }
 
   // Serial.print(F("[SX1262] Setting TCXO ... "));
 	// // Activate automatic LDRO optimization for long symbol duration SX1262 
-	// MirrorLink.module_state = lora.setTCXO(float(1.8), 5000);
-	// if (MirrorLink.module_state == ERR_NONE) {
+	// MirrorLink.moduleState = lora.setTCXO(float(1.8), 5000);
+	// if (MirrorLink.moduleState == ERR_NONE) {
   //   Serial.println(F("success!"));
 	// } else {
 	// 	Serial.print(F("failed, code "));
-	// 	Serial.println(MirrorLink.module_state);
+	// 	Serial.println(MirrorLink.moduleState);
 	// }
 
 	// eByte E22-900M uses DIO3 to supply the external TCXO
@@ -333,7 +367,7 @@ bool MirrorLinkTransmitStatus(void) {
     MirrorLink.status.enableInterrupt = (uint16_t)false;
     MirrorLink.status.transmittedFlag = (uint16_t)false;
 
-    if (MirrorLink.module_state == ERR_NONE) {
+    if (MirrorLink.moduleState == ERR_NONE) {
       // packet was successfully sent
       Serial.println(F("transmission finished!"));
 
@@ -344,7 +378,7 @@ bool MirrorLinkTransmitStatus(void) {
     } 
     else {
       Serial.print(F("failed, code "));
-      Serial.println(MirrorLink.module_state);
+      Serial.println(MirrorLink.moduleState);
     }
     MirrorLink.status.enableInterrupt = (uint16_t)true;
   }
@@ -361,19 +395,19 @@ void MirrorLinkTransmit(void) {
   /*
     byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
                       0x89, 0xAB, 0xCD, 0xEF};
-    MirrorLink.module_state = lora.startTransmit(byteArr, 8);
+    MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
   byte byteArr[4] = {(byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 24) , (byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 16) , (byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 8) , (byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)])};
-  MirrorLink.module_state = lora.startTransmit(byteArr, 4);
+  MirrorLink.moduleState = lora.startTransmit(byteArr, 4);
 #else
   // TODO: Transmit answer to command
   /*
     byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
                       0x89, 0xAB, 0xCD, 0xEF};
-    MirrorLink.module_state = lora.startTransmit(byteArr, 8);
+    MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
   byte byteArr[4] = {(byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
-  MirrorLink.module_state = lora.startTransmit(byteArr, 4);
+  MirrorLink.moduleState = lora.startTransmit(byteArr, 4);
   MirrorLink.command = 0;
 #endif // defined(MIRRORLINK_OSREMOTE)
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
@@ -393,9 +427,9 @@ bool MirrorLinkReceiveStatus(void) {
 
     // Read received data as byte array
     byte byteArr[4];
-    MirrorLink.module_state = lora.readData(byteArr, 4);
+    MirrorLink.moduleState = lora.readData(byteArr, 4);
 
-    if (MirrorLink.module_state == ERR_NONE) {
+    if (MirrorLink.moduleState == ERR_NONE) {
 
 #if defined(MIRRORLINK_OSREMOTE)
       MirrorLink.response = (((uint32_t)byteArr[0] << 24) | ((uint32_t)byteArr[1] << 16) | ((uint32_t)byteArr[2] << 8) | ((uint32_t)byteArr[3]));
@@ -424,14 +458,14 @@ bool MirrorLinkReceiveStatus(void) {
       Serial.println(F(" dB"));
 
       rxSuccessful = true;
-    } else if (MirrorLink.module_state == ERR_CRC_MISMATCH) {
+    } else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
       Serial.println(F("CRC error!"));
 
     } else {
       // some other error occurred
       Serial.print(F("failed, code "));
-      Serial.println(MirrorLink.module_state);
+      Serial.println(MirrorLink.moduleState);
     }
 
     // put module back to listen mode
@@ -450,15 +484,39 @@ void MirrorLinkReceiveInit(void) {
 
   // start listening for LoRa packets
   Serial.print(F("[SX1262] Starting to listen ... "));
-  MirrorLink.module_state = lora.startReceive();
-  if (MirrorLink.module_state == ERR_NONE) {
+  MirrorLink.moduleState = lora.startReceive();
+  if (MirrorLink.moduleState == ERR_NONE) {
     Serial.println(F("success!"));
     MirrorLink.status.flagRxTx = ML_RECEIVING;
   } else {
     Serial.print(F("failed, code "));
-    Serial.println(MirrorLink.module_state);
+    Serial.println(MirrorLink.moduleState);
   }
 }
+
+#if !defined(MIRRORLINK_OSREMOTE)
+// MirrorLink function to control the actions related to the stayalive counter
+void MirrorLinkStayAliveControl(void) {
+  // If stayalive control is active
+  if (MirrorLink.status.stayalive) {
+    // If system currently enabled
+    if (os.status.enabled) {
+      // If timer reached
+      if (os.now_tz() > MirrorLink.stayAliveTimer) {
+        // Disable system
+        os.disable();
+      }
+    }
+    else {
+      // If timer not reached
+      if (os.now_tz() < MirrorLink.stayAliveTimer) {
+        // Enable system
+        os.enable();
+      }
+    }
+  }
+}
+#endif
 
 // MirrorLink module state machine change function
 void MirrorLinkState(void) {
@@ -507,12 +565,12 @@ void MirrorLinkState(void) {
       // AND buffer not empty
       // change state to send
       // TODO: Correct timer use
-      MirrorLink.timer = os.now_tz();
-      if (  (MirrorLink.timer == os.now_tz())
+      MirrorLink.sendTimer = os.now_tz();
+      if (  (MirrorLink.sendTimer == os.now_tz())
           &&(MirrorLink.bufferedCommands > 0)) {
         Serial.println(F("STATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
-        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         MirrorLinkTransmit();
       }
       break;
@@ -524,21 +582,21 @@ void MirrorLinkState(void) {
       // change state to receive
 #if defined(MIRRORLINK_OSREMOTE)
       if (MirrorLinkTransmitStatus() == true) {
-        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
       }
-      else if (MirrorLink.timer <= os.now_tz()) {
-        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+      else if (MirrorLink.sendTimer <= os.now_tz()) {
+        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         MirrorLinkReceiveInit();
       }
 #else
       if (   (MirrorLinkTransmitStatus() == true)
-          || (MirrorLink.timer <= os.now_tz())) {
-        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+          || (MirrorLink.sendTimer <= os.now_tz())) {
+        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
@@ -567,14 +625,14 @@ void MirrorLinkState(void) {
         if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
         
         MirrorLink.response = 0;
-        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
       }
 
       // If timeout
       // Report error and change state as well to Buffering
-      if(MirrorLink.timer <= os.now_tz()) {
+      if(MirrorLink.sendTimer <= os.now_tz()) {
 
         // Report error
         Serial.println(F("No answer received from station!"));
@@ -583,7 +641,7 @@ void MirrorLinkState(void) {
         if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
         
         MirrorLink.response = 0;
-        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
       }   
@@ -601,6 +659,9 @@ void MirrorLinkState(void) {
         uint8_t usw = 0;
         uint8_t oddeven = 0;
         uint8_t addProg = 0;
+        char * latitude;
+        char * longitude;
+        const float weight = 180./(1 << 23);
         if (MirrorLink.command != 0) {
           // Execute command
           switch (MirrorLink.command >> 27) {
@@ -617,6 +678,7 @@ void MirrorLinkState(void) {
               en = (uint8_t) (payload & 0x1);
               timer = (uint16_t) ((0xFFFF) & (payload >> 9));     
               schedule_test_station(sid, timer);
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_PROGRAMADDDEL:
               // Message format: 
@@ -659,6 +721,7 @@ void MirrorLinkState(void) {
                   delete_program_data(pid);
                 }
               }
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_PROGRAMMAINSETUP:
               // Message format:
@@ -677,6 +740,7 @@ void MirrorLinkState(void) {
               mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload >> 9));
               sprintf_P(mirrorlinkProg.name, "%d", pid);
               change_program_data(pid, pd.nprograms, &mirrorlinkProg);
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_PROGRAMDAYS:
               // Message format:
@@ -688,6 +752,7 @@ void MirrorLinkState(void) {
               pid = (int16_t) (0x7F & payload);
               mirrorlinkProg.days[0] = (byte) (0xFF & (payload >> 15));
               mirrorlinkProg.days[1] = (byte) (0xFF & (payload >> 7));
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;            
             case ML_PROGRAMSTARTTIME:
               // Message format:
@@ -702,6 +767,7 @@ void MirrorLinkState(void) {
               stTimeNum = (uint8_t)((payload >> 7) & 0x3);
               mirrorlinkProg.starttimes[stTimeNum] = (int16_t)((payload >> 9) & 0xFFFF);
               mirrorlinkProg.starttime_type = (uint8_t)((payload >> 25) & 0x1);
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_PROGRAMDURATION:
               // Message format:
@@ -714,6 +780,7 @@ void MirrorLinkState(void) {
               pid = (int16_t)(payload & 0x7F);
               sid = (byte)((payload >> 7) & 0xFF);
               mirrorlinkProg.durations[sid] = (uint16_t)(60 * ((payload >> 15) & 0x7FF));
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_TIMESYNC:
               // Message format:
@@ -722,17 +789,18 @@ void MirrorLinkState(void) {
               payload = MirrorLinkGetCmd((uint8_t)ML_TIMESYNC);
               setTime((time_t)(60*(0x7FFFFFF & payload)));
               RTC.set((time_t)(60*(0x7FFFFFF & payload)));
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_TIMEZONESYNC:
             	// Payload format:
 		          // bit 0 to 7 = Time zone
+              // bit 8 to 26 = Not used
 		          // bit 27 to 31 = cmd
               payload = MirrorLinkGetCmd((uint8_t)ML_TIMEZONESYNC);
               os.iopts[IOPT_TIMEZONE] = (byte)(0xFF & payload);
               os.iopts[IOPT_USE_NTP] = 0;
               os.iopts_save();
-              //os.status.req_ntpsync = 1;
-              //os.weather_update_flag |= WEATHER_UPDATE_TZ;
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_CURRENTREQUEST:
               // TODO:
@@ -740,13 +808,65 @@ void MirrorLinkState(void) {
               // TODO:
               break;
             case ML_STATIONREBOOT:
-              // Reboot
+            	// Payload format:
+		          // bit 0 to 26 = Not used
+		          // bit 27 to 31 = cmd
               MirrorLink.status.rebootRequest = (uint16_t)true;
               os.reboot_dev(REBOOT_CAUSE_MIRRORLINK);
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_LATITUDE:
+              // Payload format: 
+              // bit 0 to 23 = latitude
+              // bit 24 to 26 = Not used
+              // bit 27 to 31 = cmd
+              payload = MirrorLinkGetCmd((uint8_t)ML_LATITUDE);
+              MirrorLink.latitude = (int32_t)(0xFFFFFF & payload);
+              sprintf_P(tmp_buffer, PSTR("%f,%f"), (float) (weight * ((float)MirrorLink.latitude- 0.5f)), (float) (weight * ((float)MirrorLink.longitude- 0.5f)));
+              os.sopt_save(SOPT_LOCATION, tmp_buffer);
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_LONGITUDE:
+              // Payload format: 
+              // bit 0 to 23 = longitude
+              // bit 24 to 26 = Not used
+              // bit 27 to 31 = cmd
+              payload = MirrorLinkGetCmd((uint8_t)ML_LONGITUDE);
+              MirrorLink.longitude = (int32_t)(0xFFFFFF & payload);
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_SUNRISE:
+              // TODO:
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_SUNSET:
+              // TODO:
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_RAINDELAYSTOPTIME:
+              // TODO:
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_STAYALIVE:
+              // Payload format: 
+              // bit 0 to 25 = Stayalive configured counter
+              // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
+              // bit 27 to 31 = cmd
+              MirrorLink.status.stayalive = (uint8_t)((payload >> 26) & 0x01);
+              MirrorLink.stayAliveMaxPeriod = (time_t)(payload & 0x3FFFFFF);
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_APC:
+              // TODO:
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              break;
+            case ML_CHANNEL:
+              // TODO:
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
           }
         }
-        MirrorLink.timer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("SATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
         // Delay to allow the remote to turn to rx mode
@@ -763,6 +883,9 @@ void MirrorLinkWork(void) {
     // Initial state
     case MIRRORLINK_INIT:
       // Do nothing
+#if !defined(MIRRORLINK_OSREMOTE)
+      MirrorLinkStayAliveControl();
+#endif
       break;
     // Association state 
     case MIRRORLINK_ASSOCIATE:
@@ -774,6 +897,7 @@ void MirrorLinkWork(void) {
 #else
       // Wait of associating beacon
       // If reception register remote ID and send association feedback with station ID
+      MirrorLinkStayAliveControl();
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
 #if defined(MIRRORLINK_OSREMOTE)
@@ -796,14 +920,18 @@ void MirrorLinkWork(void) {
       // Calculate idle time until next send period
 #else
       // Send answer if not yet transmitted
-      if (   (MirrorLink.timer == (os.now_tz() + (time_t)(MIRRORLINK_RXTX_MAX_TIME - MIRRORLINK_RXTX_DEAD_TIME)))
+      if (   (MirrorLink.sendTimer == (os.now_tz() + (time_t)(MIRRORLINK_RXTX_MAX_TIME - MIRRORLINK_RXTX_DEAD_TIME)))
           && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
         MirrorLinkTransmit();
       }
+      MirrorLinkStayAliveControl();
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
+#if !defined(MIRRORLINK_OSREMOTE)
+      MirrorLinkStayAliveControl();
+#endif
       break;
   }
 }

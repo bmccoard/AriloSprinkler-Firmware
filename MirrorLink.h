@@ -23,13 +23,16 @@
 #include "utils.h"
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+
 // Config defines
-#define MIRRORLINK_DUTYCYCLE       100  // Maximum duty cycle allowed in tenths of percentage, default 100 = 10%
+#define MIRRORLINK_DUTYCYCLE            100    // Maximum duty cycle allowed in tenths of percentage, default 100 = 10%
 #if defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_BUFFERLENGTH     30  // Maximum command buffer length
+#define MIRRORLINK_BUFFERLENGTH         30     // Maximum command buffer length
 #endif // defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_RXTX_MAX_TIME     3  // Maximum time in seconds to wait for response from station or command / response transmission
-#define MIRRORLINK_RXTX_DEAD_TIME    1  // Time in seconds after receiving a message, to start transmitting one
+#define MIRRORLINK_RXTX_MAX_TIME        3      // Maximum time in seconds to wait for response from station or command / response transmission
+#define MIRRORLINK_LINKALIVE_PERIOD     3600   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_RXTX_DEAD_TIME       1      // Time in seconds after receiving a message, to start transmitting one
+#define MIRRORLINK_MODRADIOLIB                 // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 
 // Enum for commands
 enum {
@@ -46,6 +49,14 @@ enum {
   ML_EMERGENCYSHUTDOWN,       // Command to shutoff all outputs in the remote station
   ML_SYNCERROR,               // Answer to command showing sync. error between remote and station
 	ML_STATIONREBOOT,           // Perform a reboot
+  ML_LATITUDE,                // Command to configure the latitude in the remote station
+  ML_LONGITUDE,               // Command to configure the longitude in the remote station
+  ML_SUNRISE,                 // Command to configure the sunrise time in the remote station
+  ML_SUNSET,                  // Command to configure the sunset time in the remote station
+  ML_RAINDELAYSTOPTIME,       // Command to configure the rain delay stop time
+  ML_STAYALIVE,               // Command sent regularily, needed for the remote station to not shutdown all outputs
+  ML_APC,                     // Command for Adaptative Power Control (regulate remote station transmission power)
+  ML_CHANNEL,                 // Command for channel selection
   ML_MAX_CMD                  // total number of commands
 };
 

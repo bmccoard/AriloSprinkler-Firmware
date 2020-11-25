@@ -1500,6 +1500,34 @@ void server_change_options()
 
 	if (findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("loc"), true)) {
 		urlDecode(tmp_buffer);
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+		// Send location through Mirrorlink:
+		char location[TMP_BUFFER_SIZE+MAX_SOPTS_SIZE+1];
+		strcpy_P(location, tmp_buffer);
+		char * latitude = strtok((char *)location, ",");
+		char * longitude = strtok(NULL, ",");
+
+		// Encode latitude and longitude in 23 bit ints
+    	const float weight = 180./(1 << 23);
+		int32_t fp_lat = (int) (0.5f + atof(latitude) / weight);
+		int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
+
+		// Send station command over MirrorLink
+		// Payload format: 
+		// bit 0 to 23 = latitude
+		// bit 24 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0xFFFFFF & fp_lat));
+
+		// Send station command over MirrorLink
+		// Payload format: 
+		// bit 0 to 23 = longitude
+		// bit 24 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+
 		if (os.sopt_save(SOPT_LOCATION, tmp_buffer)) { // if location string has changed
 			weather_change = true;
 		}
