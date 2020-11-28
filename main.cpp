@@ -1016,6 +1016,10 @@ void do_loop()
 			reboot_notification = 0;
 			push_message(NOTIFY_REBOOT);
 		}
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+		// Send periodic MirrorLink commands to remote
+		MirrorLinkPeriodicCommands();
+#endif
 	}
 
 	// MirrorLink LORA module transceiver state machine
@@ -1869,7 +1873,7 @@ void perform_ntp_sync() {
 			RTC.set(t);
 			DEBUG_PRINTLN(RTC.get());
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-			// Send station command over MirrorLink
+			// Send Time commands over MirrorLink
 			// Payload format:
 			// bit 0 to 7 = Time zone
 			// bit 27 to 31 = cmd

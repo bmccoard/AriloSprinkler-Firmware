@@ -73,16 +73,17 @@ typedef union {
     uint16_t associated : 1;           // Shows if OS device is associated
     uint16_t flagRxTx : 1;             // Flag to indicate if module is receiving or transmitting
     uint16_t rebootRequest : 1;        // Reboot request
-    uint16_t stayalive : 1;            // Bit to indicate if the stayalive feature is active
+    uint16_t stayAlive : 1;            // Bit to indicate if the stayalive feature is active
     uint16_t free : 6;                 // Free bits
   };
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
   time_t sendTimer;                         // Timer in seconds to control send timing
   int16_t moduleState;                      // LORA module state
   MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
+  time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
+  time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
 #if defined(MIRRORLINK_OSREMOTE)
   uint8_t bufferedCommands;                 // Number of buffered commands to be sent
   uint32_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
@@ -91,7 +92,6 @@ struct MIRRORLINK {
   uint32_t command;                         // Command to be executed by the station
   int32_t latitude;                         // Latitude of the remote station
   int32_t longitude;                        // Longitude of the remote station
-  time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
 #endif //MIRRORLINK_OSREMOTE
 } MirrorLink;
 
@@ -239,23 +239,77 @@ uint32_t MirrorLinkGetCmd(uint8_t cmd)
 }
 #endif //defined(MIRRORLINK_OSREMOTE)
 
+#if defined(MIRRORLINK_OSREMOTE)
+void MirrorLinkPeriodicCommands(void) {
+  // Send regular commands (slow)
+  if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_SLOW_PERIOD) == 0) {
+    
+    // Send ML_TIMESYNC
+		// bit 0 to 26 = Unix Timestamp in minutes! not seconds
+		// bit 27 to 31 = cmd
+    MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
+    
+    // Send ML_TIMEZONESYNC
+    // Payload format:
+    // bit 0 to 7 = Time zone
+    // bit 27 to 31 = cmd
+    MirrorLinkBuffCmd((uint8_t)ML_TIMEZONESYNC, (uint32_t)(0xFF & (os.iopts[IOPT_TIMEZONE])));
+    
+    // Send ML_LATITUDE and ML_LONGITUDE
+    os.sopt_load(SOPT_LOCATION);
+    char * latitude = strtok((char *)tmp_buffer, ",");
+		char * longitude = strtok(NULL, ",");
+    // Encode latitude and longitude in 23 bit ints
+    const float weight = 180./(1 << 23);
+		int32_t fp_lat = (int) (0.5f + atof(latitude) / weight);
+		int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
+
+		// Payload format: 
+		// bit 0 to 23 = latitude
+		// bit 24 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0xFFFFFF & fp_lat));
+
+		// Payload format: 
+		// bit 0 to 23 = longitude
+		// bit 24 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));  
+  }
+  // Send regular commands (mid)
+  if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_MID_PERIOD) == 0) {
+    // Send ML_SUNRISE
+    // Send ML_SUNSET
+  }
+  // Send regular commands (fast)
+  if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_FAST_PERIOD) == 0) {
+    // Send ML_STAYALIVE
+    // bit 0 to 25 = Stayalive configured counter
+    // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
+    // bit 27 to 31 = cmd
+    MirrorLinkBuffCmd((uint8_t)ML_STAYALIVE, (uint32_t)((((uint32_t)1) << 26) | (0x3FFFFFF & MIRRORLINK_STAYALIVE_PERIOD)));
+  }
+}
+#endif //defined(MIRRORLINK_OSREMOTE)
+
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
   MirrorLink.moduleState = ERR_NONE;
   MirrorLink.status.receivedFlag = (uint16_t)false;
   MirrorLink.status.transmittedFlag = (uint16_t)false;
   MirrorLink.status.enableInterrupt = (uint16_t)true;
-  MirrorLink.status.stayalive = (uint16_t)true;
   MirrorLink.status.mirrorlinkState = MIRRORLINK_INIT;
   MirrorLink.status.flagRxTx = ML_RECEIVING;
   MirrorLink.status.rebootRequest = (uint16_t)false;
   MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-  MirrorLink.stayAliveTimer = os.now_tz() + (time_t)MIRRORLINK_LINKALIVE_PERIOD;
+  MirrorLink.status.stayAlive = (uint16_t)true;
+  MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_STAYALIVE_PERIOD;
+  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
 #else
-// Intern program to store program data sent by remote
+  // Intern program to store program data sent by remote
   mirrorlinkProg.enabled = 0;
   mirrorlinkProg.use_weather = 0;
   mirrorlinkProg.oddeven = 0;
@@ -266,7 +320,6 @@ void MirrorLinkInit(void) {
   mirrorlinkProg.days[1] = 0;
   for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
   for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
-  MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_LINKALIVE_PERIOD;
   sprintf_P(mirrorlinkProg.name, "%d", 0);
 #endif // defined(MIRRORLINK_OSREMOTE)
 
@@ -498,7 +551,7 @@ void MirrorLinkReceiveInit(void) {
 // MirrorLink function to control the actions related to the stayalive counter
 void MirrorLinkStayAliveControl(void) {
   // If stayalive control is active
-  if (MirrorLink.status.stayalive) {
+  if (MirrorLink.status.stayAlive) {
     // If system currently enabled
     if (os.status.enabled) {
       // If timer reached
@@ -852,9 +905,18 @@ void MirrorLinkState(void) {
               // bit 0 to 25 = Stayalive configured counter
               // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
               // bit 27 to 31 = cmd
-              MirrorLink.status.stayalive = (uint8_t)((payload >> 26) & 0x01);
+              payload = MirrorLinkGetCmd((uint8_t)ML_STAYALIVE);
+              MirrorLink.status.stayAlive = (uint8_t)((payload >> 26) & 0x01);
               MirrorLink.stayAliveMaxPeriod = (time_t)(payload & 0x3FFFFFF);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              
+              Serial.print(F("MirrorLink.status.stayAlive = "));
+              Serial.println(MirrorLink.status.stayAlive);
+              Serial.print(F("MirrorLink.stayAliveMaxPeriod = "));
+              Serial.println(MirrorLink.stayAliveMaxPeriod);
+              Serial.print(F("MirrorLink.stayAliveTimer = "));
+              Serial.println(MirrorLink.stayAliveTimer);
+
               break;
             case ML_APC:
               // TODO:
@@ -903,7 +965,6 @@ void MirrorLinkWork(void) {
 #if defined(MIRRORLINK_OSREMOTE)
     // Buffering state
     case MIRRORLINK_BUFFERING:
-      // Do nothing, commands are getting buffered
       break;
 #endif // defined(MIRRORLINK_OSREMOTE)
     // Send state

@@ -25,14 +25,16 @@
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 // Config defines
-#define MIRRORLINK_DUTYCYCLE            100    // Maximum duty cycle allowed in tenths of percentage, default 100 = 10%
 #if defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_BUFFERLENGTH         30     // Maximum command buffer length
+#define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
+#define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  30//3600   // Period in seconds to send the regular commands to remote station (fast)
+#define MIRRORLINK_REGCOMMANDS_MID_PERIOD   60//86400  // Period in seconds to send the regular commands to remote station (mid)
+#define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  90//604800 // Period in seconds to send the regular commands to remote station (slow)
 #endif // defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_RXTX_MAX_TIME        3      // Maximum time in seconds to wait for response from station or command / response transmission
-#define MIRRORLINK_LINKALIVE_PERIOD     3600   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
-#define MIRRORLINK_RXTX_DEAD_TIME       1      // Time in seconds after receiving a message, to start transmitting one
-#define MIRRORLINK_MODRADIOLIB                 // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
+#define MIRRORLINK_RXTX_MAX_TIME            3      // Maximum time in seconds to wait for response from station or command / response transmission
+#define MIRRORLINK_STAYALIVE_PERIOD         35   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_RXTX_DEAD_TIME           1      // Time in seconds after receiving a message, to start transmitting one
+#define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 
 // Enum for commands
 enum {
@@ -68,6 +70,7 @@ enum {
 
 #if defined(MIRRORLINK_OSREMOTE)
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
+void MirrorLinkPeriodicCommands();
 #else
 uint32_t MirrorLinkGetCmd(uint8_t cmd);
 #endif //defined(MIRRORLINK_OSREMOTE)
