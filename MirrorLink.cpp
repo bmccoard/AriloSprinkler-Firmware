@@ -336,6 +336,8 @@ void MirrorLinkInit(void) {
 	pinMode(LORA_DIO1, INPUT);  // DIO1
 	pinMode(LORA_DIO2, INPUT);  // DIO1
 	pinMode(LORA_BUSY, INPUT);  // DIO1
+  pinMode(LORA_RXEN, OUTPUT); // RXEN
+  pinMode(LORA_TXEN, OUTPUT); // TXEN
 
 	// SCLK GPIO 5, MISO GPIO 19, MOSI GPIO 27, CS == NSS GPIO 18
 	SPI.begin(LORA_SCLK, LORA_MISO, LORA_MOSI, LORA_NSS);
@@ -350,7 +352,7 @@ void MirrorLinkInit(void) {
 	// current limit:               60 mA
 	// preamble length:             8 symbols
 	// CRC:                         enabled
-	MirrorLink.moduleState = lora.begin(866.2, 125.0, 12, 5, 0x1424, 22, 8, (float)(1.8), true);
+	MirrorLink.moduleState = lora.begin(866.2, 125.0, 12, 5, 0x1424, 16 , 8, (float)(1.8), true);
 	if (MirrorLink.moduleState == ERR_NONE) {
     Serial.println(F("success!"));
 	} else {

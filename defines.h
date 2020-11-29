@@ -423,11 +423,11 @@ enum {
 	#define PIN_ETHER_CS         IOEXP_PIN+15 // 255 // ENC28J60 CS (chip select pin) is 16 on OS 3.2.
 	#define PIN_CURR_SENSE       34
 	#define PIN_FREE_LIST        {} // no free GPIO pin at the moment
-	#define ON_BOARD_GPIN_LIST   {13,25,255,255,255,255,255,255} //  ESP32 on board gpins to be usead as sections, 255 - pin not defined
+	#define ON_BOARD_GPIN_LIST   {255,255,255,255,255,255,255,255} //  ESP32 on board gpins to be usead as sections, 255 - pin not defined
   	#define STATION_LOGIC  		 0 // GPIO logic ex. for relays connected to grand 0 meens ON
 
 	#define MIRRORLINK_ENABLE    // If defined, MirrorLink LORA module present
-	#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
+	//#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
 
 #elif defined(OSPI) // for OSPi
 
