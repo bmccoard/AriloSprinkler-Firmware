@@ -380,6 +380,10 @@ void do_setup() {
 
 	os.mqtt.init();
 	os.status.req_mqtt_restart = true;
+	// Initialize MirrorLink LORA module if present
+#if defined(ESP32)
+	MirrorLinkInit();
+#endif
 }
 #endif
 

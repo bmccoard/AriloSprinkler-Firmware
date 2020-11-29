@@ -814,7 +814,7 @@ void OpenSprinkler::begin() {
 		}
 	}
 #else
-	// revision 2 only for ESP32
+	// revision 3 only for ESP32
 	drio = new PCA9555(ACDR_I2CADDR);
 	mainio = drio;
 	hw_rev = 3;
@@ -830,6 +830,9 @@ void OpenSprinkler::begin() {
 	PIN_LATCH_COM = V2_PIN_LATCH_COM;
 	PIN_SENSOR1 = V2_PIN_SENSOR1;
 	PIN_SENSOR2 = V2_PIN_SENSOR2;
+
+  	drio = new BUILD_IN_GPIO(); // to handle gpio's on ESP32 board
+  	drio->set_pins_output_mode() ;
 #endif	
 	
 	/* detect expanders */
@@ -837,7 +840,6 @@ void OpenSprinkler::begin() {
 		expanders[i] = NULL;
 	DEBUG_PRINTLN("Starting to detect expanders");
 	detect_expanders();
-
 
 #else
 
@@ -1000,7 +1002,7 @@ void OpenSprinkler::begin() {
 	
 	// detect and check RTC type
 	RTC.detect();
-
+	
 	// Initialize MirrorLink LORA module if present
 #if defined(ESP32)
 	MirrorLinkInit();
