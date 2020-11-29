@@ -857,13 +857,16 @@ void MirrorLinkState(void) {
               break;
             case ML_CURRENTREQUEST:
               // TODO:
+              payload = MirrorLinkGetCmd((uint8_t)ML_CURRENTREQUEST);
             case ML_EMERGENCYSHUTDOWN:
               // TODO:
+              payload = MirrorLinkGetCmd((uint8_t)ML_EMERGENCYSHUTDOWN);
               break;
             case ML_STATIONREBOOT:
             	// Payload format:
 		          // bit 0 to 26 = Not used
 		          // bit 27 to 31 = cmd
+              payload = MirrorLinkGetCmd((uint8_t)ML_STATIONREBOOT);
               MirrorLink.status.rebootRequest = (uint16_t)true;
               os.reboot_dev(REBOOT_CAUSE_MIRRORLINK);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
@@ -890,14 +893,17 @@ void MirrorLinkState(void) {
               break;
             case ML_SUNRISE:
               // TODO:
+              payload = MirrorLinkGetCmd((uint8_t)ML_SUNRISE);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_SUNSET:
               // TODO:
+              payload = MirrorLinkGetCmd((uint8_t)ML_SUNSET);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_RAINDELAYSTOPTIME:
               // TODO:
+              payload = MirrorLinkGetCmd((uint8_t)ML_RAINDELAYSTOPTIME);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_STAYALIVE:
@@ -909,14 +915,6 @@ void MirrorLinkState(void) {
               MirrorLink.status.stayAlive = (uint8_t)((payload >> 26) & 0x01);
               MirrorLink.stayAliveMaxPeriod = (time_t)(payload & 0x3FFFFFF);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-              
-              Serial.print(F("MirrorLink.status.stayAlive = "));
-              Serial.println(MirrorLink.status.stayAlive);
-              Serial.print(F("MirrorLink.stayAliveMaxPeriod = "));
-              Serial.println(MirrorLink.stayAliveMaxPeriod);
-              Serial.print(F("MirrorLink.stayAliveTimer = "));
-              Serial.println(MirrorLink.stayAliveTimer);
-
               break;
             case ML_APC:
               // TODO:

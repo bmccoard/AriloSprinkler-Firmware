@@ -427,7 +427,7 @@ enum {
   	#define STATION_LOGIC  		 0 // GPIO logic ex. for relays connected to grand 0 meens ON
 
 	#define MIRRORLINK_ENABLE    // If defined, MirrorLink LORA module present
-	//#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
+	#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
 
 #elif defined(OSPI) // for OSPi
 
