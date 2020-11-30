@@ -32,9 +32,10 @@
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  90//604800 // Period in seconds to send the regular commands to remote station (slow)
 #endif // defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_RXTX_MAX_TIME            3      // Maximum time in seconds to wait for response from station or command / response transmission
-#define MIRRORLINK_STAYALIVE_PERIOD         35   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_STAYALIVE_PERIOD         35     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #define MIRRORLINK_RXTX_DEAD_TIME           1      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
+#define ML_FREQUENCY                        866.2  // MirrorLink Frequency
 
 // Enum for commands
 enum {
@@ -68,6 +69,12 @@ enum {
 	ML_TRANSMITTING  // Module is receiving
 };
 
+// Enum for link status
+enum {
+  ML_LINK_DOWN = 0,// Link is down
+	ML_LINK_UP       // Link is up
+};
+
 #if defined(MIRRORLINK_OSREMOTE)
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
 void MirrorLinkPeriodicCommands();
@@ -77,6 +84,8 @@ uint32_t MirrorLinkGetCmd(uint8_t cmd);
 
 void MirrorLinkInit();
 void MirrorLinkMain();
+String MirrorLinkStatus();
+
 #endif // defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 #endif	// _MIRRORLINK

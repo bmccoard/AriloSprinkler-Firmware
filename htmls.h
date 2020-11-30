@@ -129,6 +129,49 @@ xhr.send(fd);
 </script>
 </body>
 )";
+const char mirrorlink_control_html[] PROGMEM = R"(<head>
+<title>AriloSprinkler MirrorLink Control</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+</head>
+<body>
+<style> table, th, td { border: 0px solid black;  border-collapse: collapse;}
+table#mls th { border: 1px solid black;}
+table#mls td { border: 1px solid black; border-collapse: collapse;}</style>
+<caption><b>AriloSprinkler MirrorLink Control</caption><br><br>
+<table cellspacing=4 id='mls'>
+<tr><td>Frequency&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Link Status&nbsp&nbsp</td></tr>
+<tr><td>(Scanning...)</td></tr>
+</table>
+<br><br>
+<table cellspacing=16>
+<tr><td><input type='password' name='mlpass' id='mlpass' style='font-size:14pt;height:28px;'></td><td>MirrorLink Password</td></tr>
+<tr><td><input type='text' name='mlfreq' id='mlfreq' style='font-size:14pt;height:28px;'></td><td>MirrorLink Frequency</td></tr>
+<tr><td><input type='text' name='mlplim' id='mlplim' style='font-size:14pt;height:28px;'></td><td>MirrorLink Power Limit</td></tr>
+<tr><td><input type='checkbox' name='mlrem' id='mlrem' style='font-size:14pt;height:28px;'></td><td>MirrorLink Remote</td></tr>
+<tr><td colspan=2><p id='msg'></p></td></tr>
+<tr><td><button type='button' id='butt' onclick='ml();' style='height:36px;width:180px'>Submit</button></td><td></td></tr>
+</table>
+<script>
+function id(s) {return document.getElementById(s);}
+function ml() {
+}
+function showStatus() {
+var xhr=new XMLHttpRequest();
+xhr.onreadystatechange=function() {
+if(xhr.readyState==4 && xhr.status==200) {
+id('mls').deleteRow(1);
+var jd=JSON.parse(xhr.responseText);
+var row=id('mls').insertRow(-1);
+row.innerHTML ="<tr><td><input name='frequency' id='mls'>" + jd.frequency + "</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" dbm)</td>" + "<td align='center'>("+jd.snrs[1] +" dbm)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
+};
+}
+xhr.open('GET','mlstatus',true); xhr.send();
+}
+setTimeout(showStatus, 1000);
+</script>
+</body>
+
+)";
 const char sta_update_html[] PROGMEM = R"(<head>
 <title>OpenSprinkler Firmware Update</title>
 <meta name='viewport' content='width=device-width, initial-scale=1'>

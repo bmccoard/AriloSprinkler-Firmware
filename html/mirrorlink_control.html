@@ -31,7 +31,7 @@ function showStatus() {
       id('mls').deleteRow(1);
       var jd=JSON.parse(xhr.responseText);
       var row=id('mls').insertRow(-1);
-      row.innerHTML ="<tr><td><input name='frequency' id='mls' type='radio' value='"+jd.frequency+"'>" + jd.frequency + "</td>"  + "<td align='center'>"+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" dbm)</td>" + "<td align='center'>("+jd.snrs[1] +" dbm)</td>" + "<td align='center'>("+jd.linkst +" dbm)</td>" + "</tr>";
+      row.innerHTML ="<tr><td><input name='frequency' id='mls'>" + jd.frequency + "</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" dbm)</td>" + "<td align='center'>("+jd.snrs[1] +" dbm)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
     };
   }
   xhr.open('GET','mlstatus',true); xhr.send();

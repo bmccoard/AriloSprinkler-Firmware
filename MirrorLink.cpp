@@ -74,7 +74,8 @@ typedef union {
     uint16_t flagRxTx : 1;             // Flag to indicate if module is receiving or transmitting
     uint16_t rebootRequest : 1;        // Reboot request
     uint16_t stayAlive : 1;            // Bit to indicate if the stayalive feature is active
-    uint16_t free : 6;                 // Free bits
+    uint16_t link : 1;                 // Shows if link is up or down
+    uint16_t free : 5;                 // Free bits
   };
 } MirrorLinkStateBitfield;
 
@@ -84,6 +85,11 @@ struct MIRRORLINK {
   MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
   time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
   time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
+  float frequency;                          // Frequency in use
+  int16_t snrLocal;                         // Local SNR (local reception)
+  int16_t snrRemote;                        // Remote SNR (remote reception)
+  int16_t rssiLocal;                         // Local RSSI (local reception)
+  int16_t rssiRemote;                        // Remote RSSI (remote reception)
 #if defined(MIRRORLINK_OSREMOTE)
   uint8_t bufferedCommands;                 // Number of buffered commands to be sent
   uint32_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
@@ -292,6 +298,46 @@ void MirrorLinkPeriodicCommands(void) {
 }
 #endif //defined(MIRRORLINK_OSREMOTE)
 
+// Status MirrorLink for wifi server
+String MirrorLinkStatus() {
+	String mirrorLinkInfo;
+	// Encode in JSON message
+	mirrorLinkInfo = "{\"frequency\":["; 
+	mirrorLinkInfo += "\"";
+	mirrorLinkInfo += String(MirrorLink.frequency);
+	mirrorLinkInfo += "\"";
+	mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"rssis\":[";
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += String(MirrorLink.rssiLocal);
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += ",\r\n";
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += String(MirrorLink.rssiRemote);
+  mirrorLinkInfo += "\"";
+	mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"snrs\":[";
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += String(MirrorLink.snrLocal);
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += ",\r\n";
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += String(MirrorLink.snrRemote);
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"linkst\":[";
+  mirrorLinkInfo += "\"";
+  if (MirrorLink.status.link == ML_LINK_UP) {
+    mirrorLinkInfo += "UP";
+  }
+  else {
+    mirrorLinkInfo += "DOWN";
+  }
+  mirrorLinkInfo += "\"";
+	mirrorLinkInfo += "]}";
+	return mirrorLinkInfo;
+}
+
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
   MirrorLink.moduleState = ERR_NONE;
@@ -305,6 +351,12 @@ void MirrorLinkInit(void) {
   MirrorLink.status.stayAlive = (uint16_t)true;
   MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_STAYALIVE_PERIOD;
   MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+  MirrorLink.status.link = ML_LINK_DOWN;
+  MirrorLink.snrLocal = 0;
+  MirrorLink.snrRemote = 0;
+  MirrorLink.rssiLocal = -200;
+  MirrorLink.rssiRemote = -200;
+  MirrorLink.frequency = (float)ML_FREQUENCY;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -348,11 +400,11 @@ void MirrorLinkInit(void) {
 	// spreading factor:            7
 	// coding rate:                 5
 	// sync word:                   0x1424 (private network)
-	// output power:                0 dBm
-	// current limit:               60 mA
+	// output power:                16 dBm (30 dBm with E22-900T30S amplification)
+	// current limit:               120 mA
 	// preamble length:             8 symbols
 	// CRC:                         enabled
-	MirrorLink.moduleState = lora.begin(866.2, 125.0, 12, 5, 0x1424, 16 , 8, (float)(1.8), true);
+	MirrorLink.moduleState = lora.begin(MirrorLink.frequency, 125.0, 12, 5, 0x1424, 16 , 8, (float)(1.8), true);
 	if (MirrorLink.moduleState == ERR_NONE) {
     Serial.println(F("success!"));
 	} else {
@@ -367,7 +419,7 @@ void MirrorLinkInit(void) {
 	}
 
 #if defined(MIRRORLINK_MODRADIOLIB)
-  // Set SX126x_REG_RX_GAIN to 0x96 -> LNA +3dB gain   SX126xWriteRegister( SX126x_REG_RX_GAIN, 0x96 );
+  // Set SX126x_REG_RX_GAIN to 0x96 -> LNA +3dB gain SX126xWriteRegister( SX126x_REG_RX_GAIN, 0x96 );
   uint16_t modReg = 0x08AC; //SX126X_REG_RX_GAIN
   uint8_t modData[1] = { 0x96 };
   MirrorLink.moduleState = lora.writeRegister(modReg, modData, 1); // max LNA gain, increase current by ~2mA for around ~3dB in sensivity
@@ -375,39 +427,6 @@ void MirrorLinkInit(void) {
     Serial.println(F("LNA max gain not set successfully!"));
 	}
 #endif //defined(MIRRORLINK_MODRADIOLIB)
-
-	// Serial.print(F("[SX1262] Activating LDRO ... "));
-	// // Activate automatic LDRO optimization for long symbol duration SX1262 
-	// MirrorLink.moduleState = lora.autoLDRO();
-	// if (MirrorLink.moduleState == ERR_NONE) {
-  //   Serial.println(F("success!"));
-	// } else {
-	// 	Serial.print(F("failed, code "));
-	// 	Serial.println(MirrorLink.moduleState);
-	// }
-
-  // Serial.print(F("[SX1262] Setting TCXO ... "));
-	// // Activate automatic LDRO optimization for long symbol duration SX1262 
-	// MirrorLink.moduleState = lora.setTCXO(float(1.8), 5000);
-	// if (MirrorLink.moduleState == ERR_NONE) {
-  //   Serial.println(F("success!"));
-	// } else {
-	// 	Serial.print(F("failed, code "));
-	// 	Serial.println(MirrorLink.moduleState);
-	// }
-
-	// eByte E22-900M uses DIO3 to supply the external TCXO
-	//if (lora.setTCXO(2.4) == ERR_INVALID_TCXO_VOLTAGE)
-  // if (lora.setTCXO(1.8) == ERR_INVALID_TCXO_VOLTAGE)
-	// {
-	// 	Serial.println(F("Selected TCXO voltage is invalid for this module!"));
-	// }
-
-  // Set PA config
-  // if (lora.setPaConfig(0x04, 16) == ERR_INVALID_TCXO_VOLTAGE)
-	// {
-	// 	Serial.println(F("PA configuration is invalid for this module!"));
-	// }
 
 	// Set the function that will be called
 	// when new packet is transmitted or received
@@ -560,6 +579,8 @@ void MirrorLinkStayAliveControl(void) {
       if (os.now_tz() > MirrorLink.stayAliveTimer) {
         // Disable system
         os.disable();
+        // MirrorLink status down
+        MirrorLink.status.link = ML_LINK_DOWN;
       }
     }
     else {
@@ -567,6 +588,8 @@ void MirrorLinkStayAliveControl(void) {
       if (os.now_tz() < MirrorLink.stayAliveTimer) {
         // Enable system
         os.enable();
+        // MirrorLink status up
+        MirrorLink.status.link = ML_LINK_UP;
       }
     }
   }

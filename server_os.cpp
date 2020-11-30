@@ -458,6 +458,17 @@ void on_ap_try_connect() {
 	}  
 }
 
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+void on_ap_mirrorlink_control() {
+	String html = FPSTR(mirrorlink_control_html);
+	server_send_html(html);
+}
+
+void on_ap_mirrorlink_status() {
+	String html = MirrorLinkStatus();
+	server_send_html(html);
+}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 #endif
 
 
@@ -2174,7 +2185,12 @@ void start_server_client() {
 	wifi_server->on("/index.html", server_home);
 	wifi_server->on("/update", HTTP_GET, on_sta_update); // handle firmware update
 	wifi_server->on("/update", HTTP_POST, on_sta_upload_fin, on_sta_upload);	
-	
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	wifi_server->on("/mlcontrol", on_ap_mirrorlink_control);
+	wifi_server->on("/mlstatus", on_ap_mirrorlink_status);
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+
 	// set up all other handlers
 	char uri[4];
 	uri[0]='/';
@@ -2201,6 +2217,11 @@ void start_server_ap() {
 	wifi_server->on("/update", HTTP_GET, on_ap_update);
 	wifi_server->on("/update", HTTP_POST, on_ap_upload_fin, on_ap_upload);
 	wifi_server->onNotFound(on_ap_home);
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	wifi_server->on("/mlcontrol", on_ap_mirrorlink_control);
+	wifi_server->on("/mlstatus", on_ap_mirrorlink_status);
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 	// set up all other handlers
 	char uri[4];
