@@ -86,14 +86,14 @@ struct MIRRORLINK {
   time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
   time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
   float frequency;                          // Frequency in use
-  int16_t snrLocal;                         // Local SNR (local reception)
-  int16_t snrRemote;                        // Remote SNR (remote reception)
+  uint16_t snrLocal;                         // Local SNR (local reception)
   int16_t rssiLocal;                         // Local RSSI (local reception)
-  int16_t rssiRemote;                        // Remote RSSI (remote reception)
 #if defined(MIRRORLINK_OSREMOTE)
-  uint8_t bufferedCommands;                 // Number of buffered commands to be sent
+  uint16_t snrRemote;                        // Remote SNR (remote reception)
+  int16_t rssiRemote;                        // Remote RSSI (remote reception)
   uint32_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
   uint32_t response;                        // Response from the station to the last command sent
+  uint8_t bufferedCommands;                 // Number of buffered commands to be sent
 #else
   uint32_t command;                         // Command to be executed by the station
   int32_t latitude;                         // Latitude of the remote station
@@ -238,9 +238,8 @@ uint32_t MirrorLinkGetCmd(uint8_t cmd)
   if(cmd == (MirrorLink.command >> 27)) {
     payload = (MirrorLink.command & 0x7FFFFFF);
   }
-  else {
-    payload = 0;
-  }
+  // Empty command but cmd part to send answer to remote station
+  MirrorLink.command &= 0xF8000000;
   return payload;
 }
 #endif //defined(MIRRORLINK_OSREMOTE)
@@ -313,16 +312,24 @@ String MirrorLinkStatus() {
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += ",\r\n";
   mirrorLinkInfo += "\"";
+  #if defined(MIRRORLINK_OSREMOTE)
   mirrorLinkInfo += String(MirrorLink.rssiRemote);
+  #else
+  mirrorLinkInfo += "N.A.";
+  #endif // defined(MIRRORLINK_OSREMOTE)
   mirrorLinkInfo += "\"";
 	mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"snrs\":[";
   mirrorLinkInfo += "\"";
-  mirrorLinkInfo += String(MirrorLink.snrLocal);
+  mirrorLinkInfo += String(((float)MirrorLink.snrLocal) / 10);
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += ",\r\n";
   mirrorLinkInfo += "\"";
-  mirrorLinkInfo += String(MirrorLink.snrRemote);
+  #if defined(MIRRORLINK_OSREMOTE)
+  mirrorLinkInfo += String(((float)MirrorLink.snrRemote) / 10);
+  #else
+  mirrorLinkInfo += "N.A.";
+  #endif // defined(MIRRORLINK_OSREMOTE)
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"linkst\":[";
@@ -353,13 +360,13 @@ void MirrorLinkInit(void) {
   MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
   MirrorLink.status.link = ML_LINK_DOWN;
   MirrorLink.snrLocal = 0;
-  MirrorLink.snrRemote = 0;
   MirrorLink.rssiLocal = -200;
-  MirrorLink.rssiRemote = -200;
   MirrorLink.frequency = (float)ML_FREQUENCY;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
+  MirrorLink.snrRemote = 0;
+  MirrorLink.rssiRemote = -200;
 #else
   // Intern program to store program data sent by remote
   mirrorlinkProg.enabled = 0;
@@ -521,15 +528,20 @@ bool MirrorLinkReceiveStatus(void) {
       Serial.println(MirrorLink.command);
 #endif // defined(MIRRORLINK_OSREMOTE)
 
+      float signal;
       // print RSSI (Received Signal Strength Indicator)
+      signal = lora.getRSSI();
       Serial.print(F("[SX1262] RSSI:\t\t"));
-      Serial.print(lora.getRSSI());
+      Serial.print(signal);
       Serial.println(F(" dBm"));
+      MirrorLink.rssiLocal = (int16_t)signal;
 
+      signal = lora.getSNR();
       // print SNR (Signal-to-Noise Ratio)
       Serial.print(F("[SX1262] SNR:\t\t"));
-      Serial.print(lora.getSNR());
+      Serial.print(signal);
       Serial.println(F(" dB"));
+      MirrorLink.snrLocal = (int16_t)(signal * 10);
 
       rxSuccessful = true;
     } else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
@@ -687,16 +699,31 @@ void MirrorLinkState(void) {
       // If confirmation of buffer commands received
       // change state to Buffering
       if (MirrorLinkReceiveStatus() == true) {
+        
+        // Response payload format
+        // bit 0 to 7 = snr from remote station
+        // bit 8 to 15 = RSSI from remote station
+        // bit 16 to 22 = Number of active SID's (for diagnostic check) --> TODO!
+        // bit 23 to 26 = Error bits
+        // bit 27 to 31 = cmd
+        
+        // Gather SNR and RSSI from station
+        // Decode SNR from 0.2 resolution in 8 bit (value range from 0dB to 51.1dB)
+        // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
+        MirrorLink.snrRemote = (uint16_t)(MirrorLink.response & 0xFF) * 2;
+        MirrorLink.rssiRemote = (int16_t)(((MirrorLink.response >> 8) & 0xFF) * 2);
+
+        // Diagnostics
+        // If response command different than last command sent then report error
+        if ((MirrorLink.response >> 27) != (MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 27)) {
+          Serial.println(F("Station response does not match command sent!"));
+        }
+
         // In case response shows a sync error between remote and station
         // delete all programs and reset response
-        if ((MirrorLink.response >> 27) == ML_SYNCERROR) {
+        if (((MirrorLink.response >> 23) & 0xF) == ML_SYNCERROR) {
           delete_program_data(-1);
           Serial.println(F("Sync error with remote, reset program data!"));
-        }
-        
-        // If response different than last command sent then report error
-        if (MirrorLink.response != MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)]) {
-          Serial.println(F("Station response does not match command sent!"));
         }
 
         // Report command sent
@@ -777,7 +804,7 @@ void MirrorLinkState(void) {
                 if (pid != pd.nprograms) {
                   // Delete all programs
                   delete_program_data(-1);
-                  MirrorLink.command = (((uint32_t)ML_SYNCERROR) << 27);
+                  MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
                 }
                 // Otherwise create new program
                 else {
@@ -792,7 +819,7 @@ void MirrorLinkState(void) {
                 if (pid >= pd.nprograms) {
                   // Delete all programs
                   delete_program_data(-1);
-                  MirrorLink.command = (((uint32_t)ML_SYNCERROR) << 27);
+                  MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
                 }
                 // Otherwise delete the program
                 else {
@@ -950,6 +977,11 @@ void MirrorLinkState(void) {
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
           }
+          
+          // Encode SNR to 0.2 resolution in 8 bit (value range from 0dB to 51.1dB)
+          // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
+          MirrorLink.command |= ((MirrorLink.snrLocal / 2) & 0xFF);
+          MirrorLink.command |= (((uint32_t)(MirrorLink.rssiLocal / 2)) << 8);
         }
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("SATE: MIRRORLINK_SEND"));

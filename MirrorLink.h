@@ -50,7 +50,6 @@ enum {
   ML_TIMEZONESYNC,            // Command to configure the time zone in the remote station
   ML_CURRENTREQUEST,          // Command to request the station to send its current to the remote
   ML_EMERGENCYSHUTDOWN,       // Command to shutoff all outputs in the remote station
-  ML_SYNCERROR,               // Answer to command showing sync. error between remote and station
 	ML_STATIONREBOOT,           // Perform a reboot
   ML_LATITUDE,                // Command to configure the latitude in the remote station
   ML_LONGITUDE,               // Command to configure the longitude in the remote station
@@ -73,6 +72,12 @@ enum {
 enum {
   ML_LINK_DOWN = 0,// Link is down
 	ML_LINK_UP       // Link is up
+};
+
+// Enum for errors
+enum {
+  ML_NO_ERROR = 0,  // No error
+  ML_SYNCERROR      // Sync. error between remote and station
 };
 
 #if defined(MIRRORLINK_OSREMOTE)
