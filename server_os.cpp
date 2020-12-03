@@ -985,7 +985,6 @@ void server_change_program() {
 	if (pid==-1) {
 		byte numPrograms = (int32_t)pd.add(&prog);
 		if(!numPrograms) {
-			Serial.println(F("Shit 1"));
 			handle_return(HTML_DATA_OUTOFBOUND);
 		}
 		else {

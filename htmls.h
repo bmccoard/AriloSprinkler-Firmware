@@ -162,7 +162,7 @@ if(xhr.readyState==4 && xhr.status==200) {
 id('mls').deleteRow(1);
 var jd=JSON.parse(xhr.responseText);
 var row=id('mls').insertRow(-1);
-row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" dbm)</td>" + "<td align='center'>("+jd.snrs[1] +" dbm)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
+row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
 };
 }
 xhr.open('GET','mlstatus',true); xhr.send();

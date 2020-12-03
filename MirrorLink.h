@@ -36,6 +36,7 @@
 #define MIRRORLINK_RXTX_DEAD_TIME           1      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #define ML_FREQUENCY                        866.2  // MirrorLink Frequency
+#define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)
 
 // Enum for commands
 enum {

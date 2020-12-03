@@ -270,16 +270,28 @@ void MirrorLinkPeriodicCommands(void) {
 		int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
 
 		// Payload format: 
-		// bit 0 to 23 = latitude
-		// bit 24 to 26 = Not used
+		// bit 0 to 24 = latitude (bit 24 for sign)
+		// bit 25 to 26 = Not used
 		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0xFFFFFF & fp_lat));
+
+    // Encode negative latitude
+    if (fp_lat < 0) {
+      fp_lat *= -1;
+      fp_lat |= 0x1000000;
+    }
+		MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0x1FFFFFF & fp_lat));
 
 		// Payload format: 
 		// bit 0 to 23 = longitude
 		// bit 24 to 26 = Not used
 		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));  
+
+    // Encode negative longitude
+    if (fp_lon < 0) {
+      fp_lon *= -1;
+      fp_lon |= 0x1000000;
+    }
+		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0x1FFFFFF & fp_lon));  
   }
   // Send regular commands (mid)
   if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_MID_PERIOD) == 0) {
@@ -541,7 +553,7 @@ bool MirrorLinkReceiveStatus(void) {
       Serial.print(F("[SX1262] SNR:\t\t"));
       Serial.print(signal);
       Serial.println(F(" dB"));
-      MirrorLink.snrLocal = (int16_t)(signal * 10);
+      MirrorLink.snrLocal = (uint16_t)(signal * 10);
 
       rxSuccessful = true;
     } else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
@@ -701,17 +713,21 @@ void MirrorLinkState(void) {
       if (MirrorLinkReceiveStatus() == true) {
         
         // Response payload format
-        // bit 0 to 7 = snr from remote station
-        // bit 8 to 15 = RSSI from remote station
+        // bit 0 to 7 = RSSI from remote station
+        // bit 8 to 15 = SNR from remote station
         // bit 16 to 22 = Number of active SID's (for diagnostic check) --> TODO!
         // bit 23 to 26 = Error bits
         // bit 27 to 31 = cmd
         
         // Gather SNR and RSSI from station
-        // Decode SNR from 0.2 resolution in 8 bit (value range from 0dB to 51.1dB)
         // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
-        MirrorLink.snrRemote = (uint16_t)(MirrorLink.response & 0xFF) * 2;
-        MirrorLink.rssiRemote = (int16_t)(((MirrorLink.response >> 8) & 0xFF) * 2);
+        // Decode SNR from 0.2 resolution in 8 bit (value range from 0dB to 51.1dB)
+        MirrorLink.rssiRemote = (int16_t)(MirrorLink.response & 0x7F);
+        if (MirrorLink.response && 0x80) {
+          MirrorLink.rssiRemote *= -1;
+        }
+        MirrorLink.rssiRemote *= 2;
+        MirrorLink.snrRemote = (uint16_t)(((MirrorLink.response >> 8) & 0xFF) * 2);
 
         // Diagnostics
         // If response command different than last command sent then report error
@@ -733,6 +749,9 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+
+        Serial.print(F("Commands in buffer: "));
+        Serial.println(MirrorLink.bufferedCommands);
       }
 
       // If timeout
@@ -749,7 +768,10 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
-      }   
+
+        Serial.print(F("Commands in buffer: "));
+        Serial.println(MirrorLink.bufferedCommands);
+      }
 #else
       // If commands received
       // execute and change state to Send
@@ -925,11 +947,12 @@ void MirrorLinkState(void) {
               break;
             case ML_LATITUDE:
               // Payload format: 
-              // bit 0 to 23 = latitude
+              // bit 0 to 24 = latitude (bit 24 for sign)
               // bit 24 to 26 = Not used
               // bit 27 to 31 = cmd
               payload = MirrorLinkGetCmd((uint8_t)ML_LATITUDE);
               MirrorLink.latitude = (int32_t)(0xFFFFFF & payload);
+              if (payload && 0x1000000) MirrorLink.latitude *= -1;
               sprintf_P(tmp_buffer, PSTR("%f,%f"), (float) (weight * ((float)MirrorLink.latitude- 0.5f)), (float) (weight * ((float)MirrorLink.longitude- 0.5f)));
               os.sopt_save(SOPT_LOCATION, tmp_buffer);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
@@ -941,6 +964,7 @@ void MirrorLinkState(void) {
               // bit 27 to 31 = cmd
               payload = MirrorLinkGetCmd((uint8_t)ML_LONGITUDE);
               MirrorLink.longitude = (int32_t)(0xFFFFFF & payload);
+              if (payload && 0x1000000) MirrorLink.longitude *= -1;
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_SUNRISE:
@@ -978,10 +1002,27 @@ void MirrorLinkState(void) {
               break;
           }
           
-          // Encode SNR to 0.2 resolution in 8 bit (value range from 0dB to 51.1dB)
           // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
-          MirrorLink.command |= ((MirrorLink.snrLocal / 2) & 0xFF);
-          MirrorLink.command |= (((uint32_t)(MirrorLink.rssiLocal / 2)) << 8);
+          // Encode SNR to 0.2 resolution in 8 bit (value range from 0dB to 51.1dB)
+          uint8_t rssi;
+          if (MirrorLink.rssiLocal > 0) {
+            if ((MirrorLink.rssiLocal / 2) > 127) {
+              rssi = (uint8_t)127;
+            }
+            else {
+              rssi = (uint8_t)(MirrorLink.rssiLocal / 2);
+            }
+          } 
+          else {
+            if ((MirrorLink.rssiLocal / 2) < -127) {
+              rssi = ((uint8_t)127 | 0x80);
+            }
+            else {
+              rssi = (((uint8_t)((MirrorLink.rssiLocal / 2) * -1)) | 0x80);
+            }
+          }
+          MirrorLink.command |= (uint32_t)((rssi) & 0xFF);
+          MirrorLink.command |= ((uint32_t)((MirrorLink.snrLocal / 2) & 0xFF) << 8);
         }
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("SATE: MIRRORLINK_SEND"));
