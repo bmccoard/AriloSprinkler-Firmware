@@ -990,7 +990,12 @@ void server_change_program() {
 		else {
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 			newProgram = true;
-			pid = numPrograms - 1;
+			if (numPrograms > 0) {
+				pid = numPrograms - 1;
+			}
+			else {
+				pid = numPrograms;
+			}
 			// Program name needs to be modified to match the pid number
 			sprintf_P(prog.name, "%d", pid);
 			if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);

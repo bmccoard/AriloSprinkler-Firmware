@@ -126,7 +126,7 @@ void enableTX(void)
 // is received or transmitted by the module
 // IMPORTANT: this function MUST be 'void' type
 //            and MUST NOT have any arguments!
-void setFlag(void) {
+void ICACHE_RAM_ATTR setFlag(void) {
   // check if the interrupt is enabled
   if(!MirrorLink.status.enableInterrupt) {
     return;
