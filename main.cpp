@@ -1886,7 +1886,6 @@ void perform_ntp_sync() {
 			// bit 0 to 26 = Unix Timestamp in minutes! not seconds
 			// bit 27 to 31 = cmd
 			MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (t / 60)));
-			//MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (os.now_tz() / 60)));
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
 			#if !defined(ESP8266) && !defined(ESP32)
 			// if rtc was uninitialized and now it is, restart

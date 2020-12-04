@@ -86,14 +86,16 @@ struct MIRRORLINK {
   time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
   time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
   float frequency;                          // Frequency in use
-  uint16_t snrLocal;                         // Local SNR (local reception)
-  int16_t rssiLocal;                         // Local RSSI (local reception)
+  uint16_t snrLocal;                        // Local SNR (local reception)
+  int16_t rssiLocal;                        // Local RSSI (local reception)
 #if defined(MIRRORLINK_OSREMOTE)
-  uint16_t snrRemote;                        // Remote SNR (remote reception)
-  int16_t rssiRemote;                        // Remote RSSI (remote reception)
+  uint16_t snrRemote;                       // Remote SNR (remote reception)
+  int16_t rssiRemote;                       // Remote RSSI (remote reception)
   uint32_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
   uint32_t response;                        // Response from the station to the last command sent
   uint8_t bufferedCommands;                 // Number of buffered commands to be sent
+  uint8_t indexBufferHead;                  // Index of the first element in the command buffer
+  uint8_t indexBufferTail;                  // Index of the last element in the command buffer     
 #else
   uint32_t command;                         // Command to be executed by the station
   int32_t latitude;                         // Latitude of the remote station
@@ -224,9 +226,11 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // TODO:
     case ML_CHANNEL:
       // TODO:
+
       if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
         MirrorLink.bufferedCommands++;
-        MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] = (((uint32_t)(0x1F & (uint16_t)cmd) << 27) | payload);
+        MirrorLink.buffer[MirrorLink.indexBufferHead] = (((uint32_t)(0x1F & (uint16_t)cmd) << 27) | payload);
+        MirrorLink.indexBufferHead = (MirrorLink.indexBufferHead + 1) % MIRRORLINK_BUFFERLENGTH;
       }
       break;
   }
@@ -377,6 +381,8 @@ void MirrorLinkInit(void) {
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
+  MirrorLink.indexBufferHead = 0;
+  MirrorLink.indexBufferTail = 0;
   MirrorLink.snrRemote = 0;
   MirrorLink.rssiRemote = -200;
 #else
@@ -490,8 +496,10 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[4] = {(byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 24) , (byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 16) , (byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 8) , (byte)(0xFF & MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)])};
+  byte byteArr[4] = {(byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 24) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 16) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 8) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail])};
   MirrorLink.moduleState = lora.startTransmit(byteArr, 4);
+  Serial.print(F("Command sent: "));
+  Serial.println(MirrorLink.buffer[MirrorLink.indexBufferTail]);
 #else
   // TODO: Transmit answer to command
   /*
@@ -731,7 +739,7 @@ void MirrorLinkState(void) {
 
         // Diagnostics
         // If response command different than last command sent then report error
-        if ((MirrorLink.response >> 27) != (MirrorLink.buffer[(MirrorLink.bufferedCommands - 1)] >> 27)) {
+        if ((MirrorLink.response >> 27) != (MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27)) {
           Serial.println(F("Station response does not match command sent!"));
         }
 
@@ -743,7 +751,10 @@ void MirrorLinkState(void) {
         }
 
         // Report command sent
-        if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
+        if (MirrorLink.bufferedCommands > 0) {
+          MirrorLink.bufferedCommands--;
+          MirrorLink.indexBufferTail = (MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH;
+        }
         
         MirrorLink.response = 0;
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
@@ -752,6 +763,12 @@ void MirrorLinkState(void) {
 
         Serial.print(F("Commands in buffer: "));
         Serial.println(MirrorLink.bufferedCommands);
+
+        Serial.print(F("Buffer Head: "));
+        Serial.println(MirrorLink.indexBufferHead);
+
+        Serial.print(F("Buffer Tail: "));
+        Serial.println(MirrorLink.indexBufferTail);
       }
 
       // If timeout
@@ -762,7 +779,10 @@ void MirrorLinkState(void) {
         Serial.println(F("No answer received from station!"));
 
         // Command is lost, do not retry
-        if (MirrorLink.bufferedCommands > 0) MirrorLink.bufferedCommands--;
+        if (MirrorLink.bufferedCommands > 0) {
+          MirrorLink.bufferedCommands--;
+          (MirrorLink.indexBufferTail++) % MIRRORLINK_BUFFERLENGTH;
+        }
         
         MirrorLink.response = 0;
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
@@ -771,6 +791,12 @@ void MirrorLinkState(void) {
 
         Serial.print(F("Commands in buffer: "));
         Serial.println(MirrorLink.bufferedCommands);
+
+        Serial.print(F("Buffer Head: "));
+        Serial.println(MirrorLink.indexBufferHead);
+
+        Serial.print(F("Buffer Tail: "));
+        Serial.println(MirrorLink.indexBufferTail);
       }
 #else
       // If commands received
@@ -830,6 +856,18 @@ void MirrorLinkState(void) {
                 }
                 // Otherwise create new program
                 else {
+                  // Reset MirrorLinkProg
+                  mirrorlinkProg.enabled = 0;
+                  mirrorlinkProg.use_weather = 0;
+                  mirrorlinkProg.oddeven = 0;
+                  mirrorlinkProg.type = 0;
+                  mirrorlinkProg.starttime_type = 0;
+                  mirrorlinkProg.dummy1 = 0;
+                  mirrorlinkProg.days[0] = 0;
+                  mirrorlinkProg.days[1] = 0;
+                  for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
+                  for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+                  sprintf_P(mirrorlinkProg.name, "%d", 0);
                   change_program_data(pid, pd.nprograms, &mirrorlinkProg);
                 }
               }

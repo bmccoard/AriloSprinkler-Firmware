@@ -826,7 +826,7 @@ void server_delete_program() {
 	} else if (pid < pd.nprograms) {
 		pd.del(pid);
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-		// Send program creation request
+		// Send program deletion request
 		// bit 0 to 6 = program number (max. is 40)
 		// bit 7 = Add (1) or remove (0)
 		// bit 8 to 16 = Not used
@@ -1009,15 +1009,14 @@ void server_change_program() {
 	// Send program data over MirrorLink
 	uint32_t payload = 0;
 
-	// Send program main setup
-	// bit 0 to 6 = program number (max. is 40)
-	// bit 7 = enable/disable
-	// bit 8 = use weather
-	// bit 9 to 10 = Odd/even restriction
-	// bit 11 to 12 = schedule type
-	// bit 13 to 26 = Not used
-	// bit 27 to 31 = cmd
-	MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
+	if (newProgram == true) {
+		// Send program creation request
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 = Add (1) or remove (0)
+		// bit 8 to 16 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
+	}
 
 	// Send program starttime
 	// bit 0 to 6 = program number (max. is 40)
@@ -1047,14 +1046,16 @@ void server_change_program() {
 	// bit 27 to 31 = cmd
 	MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
 
-	if (newProgram == true) {
-		// Send program creation request
-		// bit 0 to 6 = program number (max. is 40)
-		// bit 7 = Add (1) or remove (0)
-		// bit 8 to 16 = Not used
-		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
-	}
+	// Send program main setup
+	// bit 0 to 6 = program number (max. is 40)
+	// bit 7 = enable/disable
+	// bit 8 = use weather
+	// bit 9 to 10 = Odd/even restriction
+	// bit 11 to 12 = schedule type
+	// bit 13 to 26 = Not used
+	// bit 27 to 31 = cmd
+	MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
+
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
 	handle_return(HTML_SUCCESS);
 }
