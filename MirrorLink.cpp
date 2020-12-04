@@ -274,6 +274,18 @@ void MirrorLinkPeriodicCommands(void) {
 		int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
 
 		// Payload format: 
+		// bit 0 to 23 = longitude
+		// bit 24 to 26 = Not used
+		// bit 27 to 31 = cmd
+
+    // Encode negative longitude
+    if (fp_lon < 0) {
+      fp_lon *= -1;
+      fp_lon |= 0x1000000;
+    }
+		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0x1FFFFFF & fp_lon));
+
+		// Payload format: 
 		// bit 0 to 24 = latitude (bit 24 for sign)
 		// bit 25 to 26 = Not used
 		// bit 27 to 31 = cmd
@@ -284,18 +296,6 @@ void MirrorLinkPeriodicCommands(void) {
       fp_lat |= 0x1000000;
     }
 		MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0x1FFFFFF & fp_lat));
-
-		// Payload format: 
-		// bit 0 to 23 = longitude
-		// bit 24 to 26 = Not used
-		// bit 27 to 31 = cmd
-
-    // Encode negative longitude
-    if (fp_lon < 0) {
-      fp_lon *= -1;
-      fp_lon |= 0x1000000;
-    }
-		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0x1FFFFFF & fp_lon));  
   }
   // Send regular commands (mid)
   if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_MID_PERIOD) == 0) {
@@ -990,7 +990,7 @@ void MirrorLinkState(void) {
               // bit 27 to 31 = cmd
               payload = MirrorLinkGetCmd((uint8_t)ML_LATITUDE);
               MirrorLink.latitude = (int32_t)(0xFFFFFF & payload);
-              if (payload && 0x1000000) MirrorLink.latitude *= -1;
+              if (payload & 0x1000000) MirrorLink.latitude *= -1;
               sprintf_P(tmp_buffer, PSTR("%f,%f"), (float) (weight * ((float)MirrorLink.latitude- 0.5f)), (float) (weight * ((float)MirrorLink.longitude- 0.5f)));
               os.sopt_save(SOPT_LOCATION, tmp_buffer);
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
@@ -1002,7 +1002,7 @@ void MirrorLinkState(void) {
               // bit 27 to 31 = cmd
               payload = MirrorLinkGetCmd((uint8_t)ML_LONGITUDE);
               MirrorLink.longitude = (int32_t)(0xFFFFFF & payload);
-              if (payload && 0x1000000) MirrorLink.longitude *= -1;
+              if (payload & 0x1000000) MirrorLink.longitude *= -1;
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_SUNRISE:
