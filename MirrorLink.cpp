@@ -844,7 +844,7 @@ void MirrorLinkState(void) {
               pid = (int16_t) (0x7F & payload);
               sprintf_P(mirrorlinkProg.name, "%d", pid);
 
-              // If the request is to add a program
+              // If the request is to add (or modify) a program
               if (addProg)
               {
                 // In case the new pid does not match the max. program number
@@ -854,7 +854,7 @@ void MirrorLinkState(void) {
                   delete_program_data(-1);
                   MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
                 }
-                // Otherwise create new program
+                // Otherwise create new program or modify existing one
                 else {
                   // Reset MirrorLinkProg
                   mirrorlinkProg.enabled = 0;
@@ -874,6 +874,10 @@ void MirrorLinkState(void) {
               // Request is to delete a program
               else
               {
+                Serial.print(F("Remove program/s: "));
+                Serial.println(pid);
+                Serial.print(F("Number of programs: "));
+                Serial.println(pd.nprograms);
                 // In case the new pid to be removed is not within the available pid's range
                 // SYNC issue identified, remove all programs
                 if (pid >= pd.nprograms) {
@@ -905,6 +909,19 @@ void MirrorLinkState(void) {
               mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload >> 9));
               sprintf_P(mirrorlinkProg.name, "%d", pid);
               change_program_data(pid, pd.nprograms, &mirrorlinkProg);
+              // Reset MirrorLinkProg
+              mirrorlinkProg.enabled = 0;
+              mirrorlinkProg.use_weather = 0;
+              mirrorlinkProg.oddeven = 0;
+              mirrorlinkProg.type = 0;
+              mirrorlinkProg.starttime_type = 0;
+              mirrorlinkProg.dummy1 = 0;
+              mirrorlinkProg.days[0] = 0;
+              mirrorlinkProg.days[1] = 0;
+              for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
+              for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+              sprintf_P(mirrorlinkProg.name, "%d", 0);
+
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
               break;
             case ML_PROGRAMDAYS:
