@@ -34,6 +34,7 @@
 #define MIRRORLINK_RXTX_MAX_TIME            3      // Maximum time in seconds to wait for response from station or command / response transmission
 #define MIRRORLINK_STAYALIVE_PERIOD         35     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #define MIRRORLINK_RXTX_DEAD_TIME           1      // Time in seconds after receiving a message, to start transmitting one
+#define MIRRORLINK_MAX_DUTY_CYCLE           10     // Maximum duty cycle in tenths of % (1 = 0.1)
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #define ML_FREQUENCY                        866.2  // MirrorLink Frequency
 #define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)

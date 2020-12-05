@@ -93,6 +93,7 @@ struct MIRRORLINK {
   int16_t rssiRemote;                       // Remote RSSI (remote reception)
   uint32_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
   uint32_t response;                        // Response from the station to the last command sent
+  uint32_t txTime;                          // Time used to transmit a payload in milliseconds
   uint8_t bufferedCommands;                 // Number of buffered commands to be sent
   uint8_t indexBufferHead;                  // Index of the first element in the command buffer
   uint8_t indexBufferTail;                  // Index of the last element in the command buffer     
@@ -385,6 +386,7 @@ void MirrorLinkInit(void) {
   MirrorLink.indexBufferTail = 0;
   MirrorLink.snrRemote = 0;
   MirrorLink.rssiRemote = -200;
+  MirrorLink.txTime = 0;
 #else
   // Intern program to store program data sent by remote
   mirrorlinkProg.enabled = 0;
@@ -498,8 +500,7 @@ void MirrorLinkTransmit(void) {
   */
   byte byteArr[4] = {(byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 24) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 16) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 8) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail])};
   MirrorLink.moduleState = lora.startTransmit(byteArr, 4);
-  Serial.print(F("Command sent: "));
-  Serial.println(MirrorLink.buffer[MirrorLink.indexBufferTail]);
+  MirrorLink.txTime = millis();
 #else
   // TODO: Transmit answer to command
   /*
@@ -692,6 +693,10 @@ void MirrorLinkState(void) {
       // change state to receive
 #if defined(MIRRORLINK_OSREMOTE)
       if (MirrorLinkTransmitStatus() == true) {
+        uint32_t timeMillis = millis();
+        if (MirrorLink.txTime < timeMillis) MirrorLink.txTime = timeMillis - MirrorLink.txTime;
+        Serial.print(F("Transmission duration: "));
+        Serial.println(MirrorLink.txTime);
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
@@ -760,15 +765,6 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
-
-        Serial.print(F("Commands in buffer: "));
-        Serial.println(MirrorLink.bufferedCommands);
-
-        Serial.print(F("Buffer Head: "));
-        Serial.println(MirrorLink.indexBufferHead);
-
-        Serial.print(F("Buffer Tail: "));
-        Serial.println(MirrorLink.indexBufferTail);
       }
 
       // If timeout
