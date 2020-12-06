@@ -776,6 +776,9 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
         Serial.print(F("No transmission time: "));
         Serial.println((MirrorLink.sendTimer - os.now_tz()));
+
+        // Update Link status
+        MirrorLink.status.link = ML_LINK_UP;
       }
 
       // If timeout
@@ -808,6 +811,9 @@ void MirrorLinkState(void) {
 
         Serial.print(F("Buffer Tail: "));
         Serial.println(MirrorLink.indexBufferTail);
+
+        // Update Link status
+        MirrorLink.status.link = ML_LINK_DOWN;
       }
 #else
       // If commands received
