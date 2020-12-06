@@ -413,8 +413,8 @@ void MirrorLinkInit(void) {
 	pinMode(LORA_MOSI, OUTPUT); // MOSI
 	pinMode(LORA_NSS, OUTPUT);  // CS
 	pinMode(LORA_DIO1, INPUT);  // DIO1
-	pinMode(LORA_DIO2, INPUT);  // DIO1
-	pinMode(LORA_BUSY, INPUT);  // DIO1
+	pinMode(LORA_DIO2, INPUT);  // DIO2
+	pinMode(LORA_BUSY, INPUT);  // BUSY
   pinMode(LORA_RXEN, OUTPUT); // RXEN
   pinMode(LORA_TXEN, OUTPUT); // TXEN
 
@@ -639,6 +639,7 @@ void MirrorLinkState(void) {
       if (MirrorLink.status.associated == (uint8_t)true) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
+        MirrorLink.sendTimer = os.now_tz();
       }
       else {
         Serial.println(F("STATE: MIRRORLINK_ASSOCIATE"));
@@ -662,6 +663,10 @@ void MirrorLinkState(void) {
 #if defined(MIRRORLINK_OSREMOTE)
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+        // Calculate transmission-free time based on duty cycle and time of last message
+        //MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+        //Serial.print(F("No transmission time: "));
+        //Serial.println((MirrorLink.sendTimer - os.now_tz()));
 #else
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
@@ -675,9 +680,7 @@ void MirrorLinkState(void) {
       // If timer to be able to use the channel again empty
       // AND buffer not empty
       // change state to send
-      // TODO: Correct timer use
-      MirrorLink.sendTimer = os.now_tz();
-      if (  (MirrorLink.sendTimer == os.now_tz())
+      if (  (MirrorLink.sendTimer <= os.now_tz())
           &&(MirrorLink.bufferedCommands > 0)) {
         Serial.println(F("STATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
@@ -706,6 +709,10 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+        // Calculate transmission-free time based on duty cycle and time of last message
+        MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+        Serial.print(F("No transmission time: "));
+        Serial.println((MirrorLink.sendTimer - os.now_tz()));
         MirrorLinkReceiveInit();
       }
 #else
@@ -765,6 +772,10 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+        // Calculate transmission-free time based on duty cycle and time of last message
+        MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+        Serial.print(F("No transmission time: "));
+        Serial.println((MirrorLink.sendTimer - os.now_tz()));
       }
 
       // If timeout
@@ -784,6 +795,10 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+        // Calculate transmission-free time based on duty cycle and time of last message
+        MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+        Serial.print(F("No transmission time: "));
+        Serial.println((MirrorLink.sendTimer - os.now_tz()));
 
         Serial.print(F("Commands in buffer: "));
         Serial.println(MirrorLink.bufferedCommands);
