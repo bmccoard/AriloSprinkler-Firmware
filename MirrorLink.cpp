@@ -24,6 +24,7 @@
 #include "server_os.h"
 #include <RadioLib.h>
 #include "weather.h"
+#include "mbedtls/aes.h"
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
@@ -80,6 +81,9 @@ typedef union {
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
+  uint8_t networkId;                        // Network ID for the Link
+  mbedtls_aes_context aes;                  // AES encryption structure
+  char key[16];                             // Encryption key for the Link
   time_t sendTimer;                         // Timer in seconds to control send timing
   int16_t moduleState;                      // LORA module state
   MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
@@ -364,6 +368,7 @@ String MirrorLinkStatus() {
 
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
+  MirrorLink.networkId = MIRRORLINK_NETWORK_ID;
   MirrorLink.moduleState = ERR_NONE;
   MirrorLink.status.receivedFlag = (uint16_t)false;
   MirrorLink.status.transmittedFlag = (uint16_t)false;
@@ -379,6 +384,8 @@ void MirrorLinkInit(void) {
   MirrorLink.snrLocal = 0;
   MirrorLink.rssiLocal = -200;
   MirrorLink.frequency = (float)ML_FREQUENCY;
+  //MirrorLink.aes
+  //MirrorLink.key = "abcdefghijklmno";
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -431,7 +438,7 @@ void MirrorLinkInit(void) {
 	// current limit:               120 mA
 	// preamble length:             8 symbols
 	// CRC:                         enabled
-	MirrorLink.moduleState = lora.begin(MirrorLink.frequency, 125.0, 12, 5, 0x1424, 16 , 8, (float)(1.8), true);
+	MirrorLink.moduleState = lora.begin(MirrorLink.frequency, 125.0, 12, 5, SX126X_SYNC_WORD_PRIVATE, 16 , 8, (float)(1.8), true);
 	if (MirrorLink.moduleState == ERR_NONE) {
     Serial.println(F("success!"));
 	} else {
@@ -498,8 +505,8 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[4] = {(byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 24) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 16) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 8) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail])};
-  MirrorLink.moduleState = lora.startTransmit(byteArr, 4);
+  byte byteArr[5] = {(byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 24) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 16) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 8) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail])};
+  MirrorLink.moduleState = lora.startTransmit(byteArr, 5);
   MirrorLink.txTime = millis();
 #else
   // TODO: Transmit answer to command
@@ -508,8 +515,8 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[4] = {(byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
-  MirrorLink.moduleState = lora.startTransmit(byteArr, 4);
+  byte byteArr[5] = {(byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
+  MirrorLink.moduleState = lora.startTransmit(byteArr, 5);
   MirrorLink.command = 0;
 #endif // defined(MIRRORLINK_OSREMOTE)
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
@@ -524,19 +531,22 @@ bool MirrorLinkReceiveStatus(void) {
     // processing the data
     MirrorLink.status.enableInterrupt = (uint16_t)false;
 
-    // reset flag
+    // Reset flag
     MirrorLink.status.receivedFlag = (uint16_t)false;
 
     // Read received data as byte array
-    byte byteArr[4];
-    MirrorLink.moduleState = lora.readData(byteArr, 4);
+    byte byteArr[5];
+    MirrorLink.moduleState = lora.readData(byteArr, 5);
 
-    if (MirrorLink.moduleState == ERR_NONE) {
+    // Network ID match flag
+    bool networkIdMatch = (MirrorLink.networkId == byteArr[0]);
 
+    if (  (MirrorLink.moduleState == ERR_NONE)
+        &&(networkIdMatch)) {
 #if defined(MIRRORLINK_OSREMOTE)
-      MirrorLink.response = (((uint32_t)byteArr[0] << 24) | ((uint32_t)byteArr[1] << 16) | ((uint32_t)byteArr[2] << 8) | ((uint32_t)byteArr[3]));
+      MirrorLink.response = (((uint32_t)byteArr[1] << 24) | ((uint32_t)byteArr[2] << 16) | ((uint32_t)byteArr[3] << 8) | ((uint32_t)byteArr[4]));
 #else
-      MirrorLink.command = (((uint32_t)byteArr[0] << 24) | ((uint32_t)byteArr[1] << 16) | ((uint32_t)byteArr[2] << 8) | ((uint32_t)byteArr[3]));
+      MirrorLink.command = (((uint32_t)byteArr[1] << 24) | ((uint32_t)byteArr[2] << 16) | ((uint32_t)byteArr[3] << 8) | ((uint32_t)byteArr[4]));
 #endif // defined(MIRRORLINK_OSREMOTE)
       // packet was successfully received
       Serial.println(F("[SX1262] Received packet!"));
@@ -569,7 +579,11 @@ bool MirrorLinkReceiveStatus(void) {
       // packet was received, but is malformed
       Serial.println(F("CRC error!"));
 
-    } else {
+    } else if (networkIdMatch == false) {
+      // packet was received, but Network ID mismatch
+      Serial.println(F("Network ID mismatch!"));     
+    }
+    else {
       // some other error occurred
       Serial.print(F("failed, code "));
       Serial.println(MirrorLink.moduleState);

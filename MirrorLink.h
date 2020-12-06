@@ -38,6 +38,12 @@
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #define ML_FREQUENCY                        866.2  // MirrorLink Frequency
 #define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)
+#if defined(MIRRORLINK_OSREMOTE)
+#define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
+#else
+#define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
+#endif
+#define MIRRORLINK_ENCRYPTION_KEY           0x94   // Encryption key for the link
 
 // Enum for commands
 enum {
