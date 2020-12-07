@@ -3,6 +3,8 @@
 
   Copyright (C) 2020 Javier Arigita
 
+  Speck48/96 encryption based on Moritz Bitsch implementation
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
@@ -39,11 +41,22 @@
 #define ML_FREQUENCY                        866.2  // MirrorLink Frequency
 #define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)
 #if defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
+#define MIRRORLINK_NETWORK_ID               0x2294 // Default Network ID
 #else
-#define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
+#define MIRRORLINK_NETWORK_ID               0x2294 // Default Network ID
 #endif
 #define MIRRORLINK_ENCRYPTION_KEY           0x94   // Encryption key for the link
+
+// Speck48/96 encryption based on Moritz Bitsch implementation
+#define MASK24 0xFFFFFF
+#define SPECK_TYPE uint32_t
+#define SPECK_ROUNDS 22
+#define SPECK_KEY_LEN 3
+#define WORDSIZE 24
+#define ROR(x, r) ((x >> r) | (x << (24 - r))&MASK24)&MASK24
+#define ROL(x, r) ((x << r) | (x >> (24 - r))&MASK24)&MASK24
+#define R(x, y, k) (x = ROR(x, 8), x = (x + y)&MASK24, x ^= k, y = ROL(y, 3), y ^= x)
+#define RR(x, y, k) (y ^= x, y = ROR(y, 3), x ^= k, x = (x - y)&MASK24, x = ROL(x, 8))
 
 // Enum for commands
 enum {

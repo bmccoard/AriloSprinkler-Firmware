@@ -24,7 +24,6 @@
 #include "server_os.h"
 #include <RadioLib.h>
 #include "weather.h"
-#include "mbedtls/aes.h"
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
@@ -81,8 +80,7 @@ typedef union {
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  uint8_t networkId;                        // Network ID for the Link
-  mbedtls_aes_context aes;                  // AES encryption structure
+  uint16_t networkId;                       // Network ID for the Link
   char key[16];                             // Encryption key for the Link
   time_t sendTimer;                         // Timer in seconds to control send timing
   int16_t moduleState;                      // LORA module state
@@ -112,6 +110,89 @@ void schedule_all_stations(ulong curr_time);
 void schedule_test_station(byte sid, uint16_t duration);
 void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog);
 void delete_program_data(int32_t pid);
+
+// Speck48/96 encryption based on Moritz Bitsch implementation
+// Speck encryption expand function
+void speck_expand(SPECK_TYPE const K[SPECK_KEY_LEN], SPECK_TYPE S[SPECK_ROUNDS])
+{
+  SPECK_TYPE i, b = K[0];
+  SPECK_TYPE a[SPECK_KEY_LEN - 1];
+
+  for (i = 0; i < (SPECK_KEY_LEN - 1); i++)
+  {
+    a[i] = K[i + 1];
+  }
+  S[0] = b;  
+  for (i = 0; i < SPECK_ROUNDS - 1; i++) {
+    R(a[i % (SPECK_KEY_LEN - 1)], b, i);
+    S[i + 1] = b;
+  }
+}
+
+// Speck encryption function
+void speck_encrypt(SPECK_TYPE const pt[2], SPECK_TYPE ct[2], SPECK_TYPE const K[SPECK_ROUNDS])
+{
+  SPECK_TYPE i;
+  ct[0]=pt[0]; ct[1]=pt[1];
+
+  for(i = 0; i < SPECK_ROUNDS; i++){
+    R(ct[1], ct[0], K[i]);
+  }
+}
+
+// Speck decryption function
+void speck_decrypt(SPECK_TYPE const ct[2], SPECK_TYPE pt[2], SPECK_TYPE const K[SPECK_ROUNDS])
+{
+  SPECK_TYPE i;
+  pt[0]=ct[0]; pt[1]=ct[1];
+
+  for(i = 0; i < SPECK_ROUNDS; i++){
+    RR(pt[1], pt[0], K[(SPECK_ROUNDS - 1) - i]);
+  }
+}
+
+// Speck encryption combined function
+void speck_encrypt_combined(SPECK_TYPE const pt[2], SPECK_TYPE ct[2], SPECK_TYPE const K[SPECK_KEY_LEN])
+{
+  SPECK_TYPE i, b = K[0];
+  SPECK_TYPE a[SPECK_KEY_LEN - 1];
+  ct[0]=pt[0]; ct[1]=pt[1];
+
+  for (i = 0; i < (SPECK_KEY_LEN - 1); i++)
+  {
+    a[i] = K[i + 1];
+  }
+
+  R(ct[1], ct[0], b);
+  for(i = 0; i < SPECK_ROUNDS - 1; i++){
+    R(a[i % (SPECK_KEY_LEN - 1)], b, i);
+    R(ct[1], ct[0], b);
+  }
+}
+
+// Speck decryption combined function
+void speck_decrypt_combined(SPECK_TYPE const ct[2], SPECK_TYPE pt[2], SPECK_TYPE const K[SPECK_KEY_LEN])
+{
+  int i;
+  SPECK_TYPE b = K[0];
+  SPECK_TYPE a[SPECK_KEY_LEN - 1];
+  pt[0]=ct[0]; pt[1]=ct[1];
+
+  for (i = 0; i < (SPECK_KEY_LEN - 1); i++)
+  {
+    a[i] = K[i + 1];
+  }
+
+  for (i = 0; i < SPECK_ROUNDS - 1; i++)
+  {
+    R(a[i % (SPECK_KEY_LEN - 1)], b, i);
+  }
+
+  for(i = 0; i < SPECK_ROUNDS; i++){
+    RR(pt[1], pt[0], b);
+    RR(a[((SPECK_ROUNDS - 2) - i) % (SPECK_KEY_LEN - 1)], b, ((SPECK_ROUNDS - 2) - i));
+  }
+}
 
 // Set RX pin HIGH and TX pin LOW to switch to RECEIVE
 void enableRX(void)
@@ -384,8 +465,7 @@ void MirrorLinkInit(void) {
   MirrorLink.snrLocal = 0;
   MirrorLink.rssiLocal = -200;
   MirrorLink.frequency = (float)ML_FREQUENCY;
-  //MirrorLink.aes
-  //MirrorLink.key = "abcdefghijklmno";
+  strcpy_P(MirrorLink.key, "abcdefghijklmno");
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -505,8 +585,8 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[5] = {(byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 24) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 16) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 8) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail])};
-  MirrorLink.moduleState = lora.startTransmit(byteArr, 5);
+  byte byteArr[6] = {(byte)(0xFF & MirrorLink.networkId >> 8), (byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 24) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 16) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 8) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail])};
+  MirrorLink.moduleState = lora.startTransmit(byteArr, 6);
   MirrorLink.txTime = millis();
 #else
   // TODO: Transmit answer to command
@@ -515,8 +595,8 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[5] = {(byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
-  MirrorLink.moduleState = lora.startTransmit(byteArr, 5);
+  byte byteArr[6] = {(byte)(0xFF & MirrorLink.networkId >> 8), (byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
+  MirrorLink.moduleState = lora.startTransmit(byteArr, 6);
   MirrorLink.command = 0;
 #endif // defined(MIRRORLINK_OSREMOTE)
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
@@ -535,18 +615,18 @@ bool MirrorLinkReceiveStatus(void) {
     MirrorLink.status.receivedFlag = (uint16_t)false;
 
     // Read received data as byte array
-    byte byteArr[5];
-    MirrorLink.moduleState = lora.readData(byteArr, 5);
+    byte byteArr[6];
+    MirrorLink.moduleState = lora.readData(byteArr, 6);
 
     // Network ID match flag
-    bool networkIdMatch = (MirrorLink.networkId == byteArr[0]);
+    bool networkIdMatch = (MirrorLink.networkId == ((uint16_t)(byteArr[0] << 8) | (uint16_t)(byteArr[1])));
 
     if (  (MirrorLink.moduleState == ERR_NONE)
         &&(networkIdMatch)) {
 #if defined(MIRRORLINK_OSREMOTE)
-      MirrorLink.response = (((uint32_t)byteArr[1] << 24) | ((uint32_t)byteArr[2] << 16) | ((uint32_t)byteArr[3] << 8) | ((uint32_t)byteArr[4]));
+      MirrorLink.response = (((uint32_t)byteArr[2] << 24) | ((uint32_t)byteArr[3] << 16) | ((uint32_t)byteArr[4] << 8) | ((uint32_t)byteArr[5]));
 #else
-      MirrorLink.command = (((uint32_t)byteArr[1] << 24) | ((uint32_t)byteArr[2] << 16) | ((uint32_t)byteArr[3] << 8) | ((uint32_t)byteArr[4]));
+      MirrorLink.command = (((uint32_t)byteArr[2] << 24) | ((uint32_t)byteArr[3] << 16) | ((uint32_t)byteArr[4] << 8) | ((uint32_t)byteArr[5]));
 #endif // defined(MIRRORLINK_OSREMOTE)
       // packet was successfully received
       Serial.println(F("[SX1262] Received packet!"));
