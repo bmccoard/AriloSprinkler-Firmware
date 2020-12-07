@@ -3,8 +3,6 @@
 
   Copyright (C) 2020 Javier Arigita
 
-  Speck48/96 encryption based on Moritz Bitsch implementation
-
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
