@@ -45,16 +45,18 @@
 #endif
 #define MIRRORLINK_ENCRYPTION_KEY           0x94   // Encryption key for the link
 
-// Speck48/96 encryption based on Moritz Bitsch implementation
-#define MASK24 0xFFFFFF
-#define SPECK_TYPE uint32_t
-#define SPECK_ROUNDS 22
-#define SPECK_KEY_LEN 3
-#define WORDSIZE 24
-#define ROR(x, r) ((x >> r) | (x << (24 - r))&MASK24)&MASK24
-#define ROL(x, r) ((x << r) | (x >> (24 - r))&MASK24)&MASK24
-#define R(x, y, k) (x = ROR(x, 8), x = (x + y)&MASK24, x ^= k, y = ROL(y, 3), y ^= x)
-#define RR(x, y, k) (y ^= x, y = ROR(y, 3), x ^= k, x = (x - y)&MASK24, x = ROL(x, 8))
+// Speck64/128 encryption based on Moritz Bitsch implementation
+#define SPECK_TYPE                          uint32_t
+#define SPECK_ROUNDS                        27
+#define SPECK_KEY_LEN                       4
+#define ROR(x, r)                           ((x >> r) | (x << ((sizeof(SPECK_TYPE) * 8) - r)))
+#define ROL(x, r)                           ((x << r) | (x >> ((sizeof(SPECK_TYPE) * 8) - r)))
+#define R(x, y, k)                          (x = ROR(x, 8), x += y, x ^= k, y = ROL(y, 3), y ^= x)
+#define RR(x, y, k)                         (y ^= x, y = ROR(y, 3), x ^= k, x -= y, x = ROL(x, 8))
+#define SPECK_DEFAULT_KEY_N1                0x03020100    
+#define SPECK_DEFAULT_KEY_N2                0x0b0a0908
+#define SPECK_DEFAULT_KEY_N3                0x13121110
+#define SPECK_DEFAULT_KEY_N4                0x1b1a1918
 
 // Enum for commands
 enum {

@@ -52,6 +52,9 @@ enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_SEND, M
 ProgramStruct mirrorlinkProg;
 #endif
 
+// Speck key expansion buffer
+SPECK_TYPE mirrorLinkSpeckKeyExp[SPECK_ROUNDS];
+
 extern ProgramData pd;
 extern OpenSprinkler os;
 extern char tmp_buffer[];
@@ -81,7 +84,7 @@ typedef union {
 
 struct MIRRORLINK {
   uint16_t networkId;                       // Network ID for the Link
-  char key[16];                             // Encryption key for the Link
+  uint32_t key[4];                          // Encryption key for the Link
   time_t sendTimer;                         // Timer in seconds to control send timing
   int16_t moduleState;                      // LORA module state
   MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
@@ -111,7 +114,7 @@ void schedule_test_station(byte sid, uint16_t duration);
 void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog);
 void delete_program_data(int32_t pid);
 
-// Speck48/96 encryption based on Moritz Bitsch implementation
+// Speck64/128 encryption based on Moritz Bitsch implementation
 // Speck encryption expand function
 void speck_expand(SPECK_TYPE const K[SPECK_KEY_LEN], SPECK_TYPE S[SPECK_ROUNDS])
 {
@@ -148,49 +151,6 @@ void speck_decrypt(SPECK_TYPE const ct[2], SPECK_TYPE pt[2], SPECK_TYPE const K[
 
   for(i = 0; i < SPECK_ROUNDS; i++){
     RR(pt[1], pt[0], K[(SPECK_ROUNDS - 1) - i]);
-  }
-}
-
-// Speck encryption combined function
-void speck_encrypt_combined(SPECK_TYPE const pt[2], SPECK_TYPE ct[2], SPECK_TYPE const K[SPECK_KEY_LEN])
-{
-  SPECK_TYPE i, b = K[0];
-  SPECK_TYPE a[SPECK_KEY_LEN - 1];
-  ct[0]=pt[0]; ct[1]=pt[1];
-
-  for (i = 0; i < (SPECK_KEY_LEN - 1); i++)
-  {
-    a[i] = K[i + 1];
-  }
-
-  R(ct[1], ct[0], b);
-  for(i = 0; i < SPECK_ROUNDS - 1; i++){
-    R(a[i % (SPECK_KEY_LEN - 1)], b, i);
-    R(ct[1], ct[0], b);
-  }
-}
-
-// Speck decryption combined function
-void speck_decrypt_combined(SPECK_TYPE const ct[2], SPECK_TYPE pt[2], SPECK_TYPE const K[SPECK_KEY_LEN])
-{
-  int i;
-  SPECK_TYPE b = K[0];
-  SPECK_TYPE a[SPECK_KEY_LEN - 1];
-  pt[0]=ct[0]; pt[1]=ct[1];
-
-  for (i = 0; i < (SPECK_KEY_LEN - 1); i++)
-  {
-    a[i] = K[i + 1];
-  }
-
-  for (i = 0; i < SPECK_ROUNDS - 1; i++)
-  {
-    R(a[i % (SPECK_KEY_LEN - 1)], b, i);
-  }
-
-  for(i = 0; i < SPECK_ROUNDS; i++){
-    RR(pt[1], pt[0], b);
-    RR(a[((SPECK_ROUNDS - 2) - i) % (SPECK_KEY_LEN - 1)], b, ((SPECK_ROUNDS - 2) - i));
   }
 }
 
@@ -465,7 +425,11 @@ void MirrorLinkInit(void) {
   MirrorLink.snrLocal = 0;
   MirrorLink.rssiLocal = -200;
   MirrorLink.frequency = (float)ML_FREQUENCY;
-  strcpy_P(MirrorLink.key, "abcdefghijklmno");
+  MirrorLink.key[0] = SPECK_DEFAULT_KEY_N1;
+  MirrorLink.key[1] = SPECK_DEFAULT_KEY_N2;
+  MirrorLink.key[2] = SPECK_DEFAULT_KEY_N3;
+  MirrorLink.key[3] = SPECK_DEFAULT_KEY_N4;
+  speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -577,28 +541,42 @@ void MirrorLinkTransmit(void) {
 	// Important! To enable transmit you need to switch the SX126x antenna switch to TRANSMIT
 	enableTX();
   Serial.println(F("[SX1262] Starting to transmit ... "));
+  SPECK_TYPE plain[2] = {0, 0};
+  SPECK_TYPE buffer[2] = {0, 0};
+
 #if defined(MIRRORLINK_OSREMOTE)
   // Transmit buffered commands
-  // You can transmit byte array up to 256 bytes long
-  /*
-    byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
-                      0x89, 0xAB, 0xCD, 0xEF};
-    MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
-  */
-  byte byteArr[6] = {(byte)(0xFF & MirrorLink.networkId >> 8), (byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 24) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 16) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail] >> 8) , (byte)(0xFF & MirrorLink.buffer[MirrorLink.indexBufferTail])};
-  MirrorLink.moduleState = lora.startTransmit(byteArr, 6);
+  plain[0] = (uint32_t)MirrorLink.networkId;
+  plain[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
+  // Encrypt message
+  speck_encrypt(plain, buffer, mirrorLinkSpeckKeyExp);
   MirrorLink.txTime = millis();
 #else
-  // TODO: Transmit answer to command
+  // Transmit answer to command
+  plain[0] = (uint32_t)MirrorLink.networkId;
+  plain[1] = MirrorLink.command;
+  MirrorLink.command = 0;
+#endif // defined(MIRRORLINK_OSREMOTE)
   /*
     byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
-  byte byteArr[6] = {(byte)(0xFF & MirrorLink.networkId >> 8), (byte)(0xFF & MirrorLink.networkId), (byte)(0xFF & MirrorLink.command >> 24) , (byte)(0xFF & MirrorLink.command >> 16) , (byte)(0xFF & MirrorLink.command >> 8) , (byte)(0xFF & MirrorLink.command)};
-  MirrorLink.moduleState = lora.startTransmit(byteArr, 6);
-  MirrorLink.command = 0;
-#endif // defined(MIRRORLINK_OSREMOTE)
+  Serial.print(F("Plain message: "));
+  Serial.print(plain[0], HEX);
+  Serial.print(F(" "));
+  Serial.println(plain[1], HEX);
+  Serial.print(F("Encrypted message: "));
+  Serial.print(buffer[0], HEX);
+  Serial.print(F(" "));
+  Serial.println(buffer[1], HEX);
+  Serial.print(F("Decrypted message: "));
+  speck_decrypt(buffer, plain, mirrorLinkSpeckKeyExp);
+  Serial.print(plain[0], HEX);
+  Serial.print(F(" "));
+  Serial.println(plain[1], HEX);
+  byte byteArr[8] = {(byte)(0xFF & buffer[0] >> 24), (byte)(0xFF & buffer[0] >> 16), (byte)(0xFF & buffer[0] >> 8), (byte)(0xFF & buffer[0]), (byte)(0xFF & buffer[1] >> 24) , (byte)(0xFF & buffer[1] >> 16) , (byte)(0xFF & buffer[1] >> 8) , (byte)(0xFF & buffer[1])};
+  MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
 }
 
@@ -615,18 +593,25 @@ bool MirrorLinkReceiveStatus(void) {
     MirrorLink.status.receivedFlag = (uint16_t)false;
 
     // Read received data as byte array
-    byte byteArr[6];
-    MirrorLink.moduleState = lora.readData(byteArr, 6);
+    byte byteArr[8];
+    MirrorLink.moduleState = lora.readData(byteArr, 8);
+
+    // Message decryption
+    SPECK_TYPE encoded[2] = {0, 0};
+    SPECK_TYPE buffer[2] = {0, 0};
+    encoded[0] = (((uint32_t)(byteArr[0]) << 24) | ((uint32_t)(byteArr[1]) << 16) | ((uint32_t)(byteArr[2]) << 8) | ((uint32_t)(byteArr[3])));
+    encoded[1] = (((uint32_t)(byteArr[4]) << 24) | ((uint32_t)(byteArr[5]) << 16) | ((uint32_t)(byteArr[6]) << 8) | ((uint32_t)(byteArr[7])));
+    speck_decrypt(encoded, buffer, mirrorLinkSpeckKeyExp);
 
     // Network ID match flag
-    bool networkIdMatch = (MirrorLink.networkId == ((uint16_t)(byteArr[0] << 8) | (uint16_t)(byteArr[1])));
+    bool networkIdMatch = buffer[0];
 
     if (  (MirrorLink.moduleState == ERR_NONE)
         &&(networkIdMatch)) {
 #if defined(MIRRORLINK_OSREMOTE)
-      MirrorLink.response = (((uint32_t)byteArr[2] << 24) | ((uint32_t)byteArr[3] << 16) | ((uint32_t)byteArr[4] << 8) | ((uint32_t)byteArr[5]));
+      MirrorLink.response = (uint32_t)buffer[1];
 #else
-      MirrorLink.command = (((uint32_t)byteArr[2] << 24) | ((uint32_t)byteArr[3] << 16) | ((uint32_t)byteArr[4] << 8) | ((uint32_t)byteArr[5]));
+      MirrorLink.command = (uint32_t)buffer[1];
 #endif // defined(MIRRORLINK_OSREMOTE)
       // packet was successfully received
       Serial.println(F("[SX1262] Received packet!"));
