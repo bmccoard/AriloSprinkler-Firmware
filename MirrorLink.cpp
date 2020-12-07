@@ -548,8 +548,6 @@ void MirrorLinkTransmit(void) {
   // Transmit buffered commands
   plain[0] = (uint32_t)MirrorLink.networkId;
   plain[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
-  // Encrypt message
-  speck_encrypt(plain, buffer, mirrorLinkSpeckKeyExp);
   MirrorLink.txTime = millis();
 #else
   // Transmit answer to command
@@ -562,19 +560,8 @@ void MirrorLinkTransmit(void) {
                       0x89, 0xAB, 0xCD, 0xEF};
     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   */
-  Serial.print(F("Plain message: "));
-  Serial.print(plain[0], HEX);
-  Serial.print(F(" "));
-  Serial.println(plain[1], HEX);
-  Serial.print(F("Encrypted message: "));
-  Serial.print(buffer[0], HEX);
-  Serial.print(F(" "));
-  Serial.println(buffer[1], HEX);
-  Serial.print(F("Decrypted message: "));
-  speck_decrypt(buffer, plain, mirrorLinkSpeckKeyExp);
-  Serial.print(plain[0], HEX);
-  Serial.print(F(" "));
-  Serial.println(plain[1], HEX);
+  // Encrypt message
+  speck_encrypt(plain, buffer, mirrorLinkSpeckKeyExp);
   byte byteArr[8] = {(byte)(0xFF & buffer[0] >> 24), (byte)(0xFF & buffer[0] >> 16), (byte)(0xFF & buffer[0] >> 8), (byte)(0xFF & buffer[0]), (byte)(0xFF & buffer[1] >> 24) , (byte)(0xFF & buffer[1] >> 16) , (byte)(0xFF & buffer[1] >> 8) , (byte)(0xFF & buffer[1])};
   MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
@@ -790,8 +777,6 @@ void MirrorLinkState(void) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         // Calculate transmission-free time based on duty cycle and time of last message
         MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-        Serial.print(F("No transmission time: "));
-        Serial.println((MirrorLink.sendTimer - os.now_tz()));
         MirrorLinkReceiveInit();
       }
 #else
@@ -853,8 +838,6 @@ void MirrorLinkState(void) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         // Calculate transmission-free time based on duty cycle and time of last message
         MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-        Serial.print(F("No transmission time: "));
-        Serial.println((MirrorLink.sendTimer - os.now_tz()));
 
         // Update Link status
         MirrorLink.status.link = ML_LINK_UP;
@@ -879,20 +862,11 @@ void MirrorLinkState(void) {
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         // Calculate transmission-free time based on duty cycle and time of last message
         MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-        Serial.print(F("No transmission time: "));
-        Serial.println((MirrorLink.sendTimer - os.now_tz()));
-
-        Serial.print(F("Commands in buffer: "));
-        Serial.println(MirrorLink.bufferedCommands);
-
-        Serial.print(F("Buffer Head: "));
-        Serial.println(MirrorLink.indexBufferHead);
-
-        Serial.print(F("Buffer Tail: "));
-        Serial.println(MirrorLink.indexBufferTail);
 
         // Update Link status
         MirrorLink.status.link = ML_LINK_DOWN;
+        MirrorLink.snrRemote = 0;
+        MirrorLink.rssiRemote = -200;
       }
 #else
       // If commands received

@@ -167,7 +167,7 @@ row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td alig
 }
 xhr.open('GET','mlstatus',true); xhr.send();
 }
-setTimeout(showStatus, 1000);
+setInterval(showStatus, 1000);
 </script>
 </body>
 
