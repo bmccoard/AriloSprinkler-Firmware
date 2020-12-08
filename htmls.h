@@ -134,13 +134,23 @@ const char mirrorlink_control_html[] PROGMEM = R"(<head>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
 </head>
 <body>
+<h1>AriloSprinkler MirrorLink Control Panel</h1>
 <style> table, th, td { border: 0px solid black;  border-collapse: collapse;}
-table#mls th { border: 1px solid black;}
-table#mls td { border: 1px solid black; border-collapse: collapse;}</style>
-<caption><b>AriloSprinkler MirrorLink Control</caption><br><br>
-<table cellspacing=4 id='mls'>
+table#mlsr th { border: 1px solid black;}
+table#mlsr td { border: 1px solid black; border-collapse: collapse;}</style>
+<caption><b>Radio Status</caption><br><br>
+<table cellspacing=4 id='mlsr'>
 <tr><td>Frequency&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Link Status&nbsp&nbsp</td></tr>
-<tr><td>(Scanning...)</td></tr>
+<tr><td>(Waiting...)</td></tr>
+</table>
+<br><br>
+<style> table, th, td { border: 0px solid black;  border-collapse: collapse;}
+table#mlsp th { border: 1px solid black;}
+table#mlsp td { border: 1px solid black; border-collapse: collapse;}</style>
+<caption><b>Packet Status</caption><br><br>
+<table cellspacing=4 id='mlsp'>
+<tr><td>Buffered Packets&nbsp&nbsp</td><td>Packets Sent&nbsp&nbsp</td><td>Packets Received&nbsp&nbsp</td><td>Encryption&nbsp&nbsp</td><td>No TX Time&nbsp&nbsp</td>
+<tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
 <table cellspacing=16>
@@ -159,15 +169,15 @@ function showStatus() {
 var xhr=new XMLHttpRequest();
 xhr.onreadystatechange=function() {
 if(xhr.readyState==4 && xhr.status==200) {
-id('mls').deleteRow(1);
+id('mlsp').deleteRow(1);
 var jd=JSON.parse(xhr.responseText);
-var row=id('mls').insertRow(-1);
+var row=id('mlsp').insertRow(-1);
 row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
 };
 }
 xhr.open('GET','mlstatus',true); xhr.send();
 }
-setInterval(showStatus, 1000);
+setInterval(showStatus, 5000);
 </script>
 </body>
 

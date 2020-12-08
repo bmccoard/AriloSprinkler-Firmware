@@ -93,6 +93,8 @@ struct MIRRORLINK {
   float frequency;                          // Frequency in use
   uint16_t snrLocal;                        // Local SNR (local reception)
   int16_t rssiLocal;                        // Local RSSI (local reception)
+  uint32_t packetsSent;                     // Number of sent packets
+  uint32_t packetsReceived;                 // Number of received packets
 #if defined(MIRRORLINK_OSREMOTE)
   uint16_t snrRemote;                       // Remote SNR (remote reception)
   int16_t rssiRemote;                       // Remote RSSI (remote reception)
@@ -430,6 +432,8 @@ void MirrorLinkInit(void) {
   MirrorLink.key[2] = SPECK_DEFAULT_KEY_N3;
   MirrorLink.key[3] = SPECK_DEFAULT_KEY_N4;
   speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
+  MirrorLink.packetsSent = 0;
+  MirrorLink.packetsReceived = 0;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -527,6 +531,9 @@ bool MirrorLinkTransmitStatus(void) {
       //       it is not possible to automatically measure
       //       transmission data rate using getDataRate()
       txSuccessful = true;
+
+      // Increase transmission counter
+      MirrorLink.packetsSent++;
     } 
     else {
       Serial.print(F("failed, code "));
@@ -571,6 +578,8 @@ bool MirrorLinkReceiveStatus(void) {
   bool rxSuccessful = false;
   // check if the flag is set
   if(MirrorLink.status.receivedFlag) {
+    // Increase reception counter
+      MirrorLink.packetsReceived++;
 
     // disable the interrupt service routine while
     // processing the data
