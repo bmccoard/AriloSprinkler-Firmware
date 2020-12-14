@@ -149,7 +149,7 @@ table#mlsp th { border: 1px solid black;}
 table#mlsp td { border: 1px solid black; border-collapse: collapse;}</style>
 <caption><b>Packet Status</caption><br><br>
 <table cellspacing=4 id='mlsp'>
-<tr><td>Buffered Packets&nbsp&nbsp</td><td>Packets Sent&nbsp&nbsp</td><td>Packets Received&nbsp&nbsp</td><td>Encryption&nbsp&nbsp</td><td>No TX Time&nbsp&nbsp</td>
+<tr><td>Buffered Packets&nbsp&nbsp</td><td>Packets Sent&nbsp&nbsp</td><td>Packets Received&nbsp&nbsp</td><td>Encryption&nbsp&nbsp</td><td>Packet Sent Time&nbsp&nbsp</td><td>No TX Time&nbsp&nbsp</td>
 <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
@@ -169,10 +169,14 @@ function showStatus() {
 var xhr=new XMLHttpRequest();
 xhr.onreadystatechange=function() {
 if(xhr.readyState==4 && xhr.status==200) {
-id('mlsp').deleteRow(1);
+id('mlsr').deleteRow(1);
 var jd=JSON.parse(xhr.responseText);
-var row=id('mlsp').insertRow(-1);
+var row=id('mlsr').insertRow(-1);
 row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
+id('mlsp').deleteRow(1);
+jd=JSON.parse(xhr.responseText);
+row=id('mlsp').insertRow(-1);
+row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>"  + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx +")</td>" + "<td align='center'>("+jd.encryption +")</td>" + "<td align='center'>("+jd.packettime +" msec)</td>" + "<td align='center'>("+jd.notxtime +" sec)</td>" + "</tr>";
 };
 }
 xhr.open('GET','mlstatus',true); xhr.send();

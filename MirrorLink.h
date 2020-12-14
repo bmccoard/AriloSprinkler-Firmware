@@ -32,16 +32,16 @@
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  90//604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_MAX_DUTY_CYCLE           1000//10     // Maximum duty cycle in tenths of % (1 = 0.1)
 #endif // defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_RXTX_MAX_TIME            3      // Maximum time in seconds to wait for response from station or command / response transmission
+#define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
 #define MIRRORLINK_STAYALIVE_PERIOD         35     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #define MIRRORLINK_RXTX_DEAD_TIME           1      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #define ML_FREQUENCY                        866.2  // MirrorLink Frequency
 #define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)
 #if defined(MIRRORLINK_OSREMOTE)
-#define MIRRORLINK_NETWORK_ID               0x2294 // Default Network ID
+#define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
 #else
-#define MIRRORLINK_NETWORK_ID               0x2294 // Default Network ID
+#define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
 #endif
 #define MIRRORLINK_ENCRYPTION_KEY           0x94   // Encryption key for the link
 
@@ -83,13 +83,33 @@ enum {
   ML_MAX_CMD                  // total number of commands
 };
 
+// Enum for channel numbers
+enum {
+  ML_CH_0 = 0,     // Channel 0
+	ML_CH_1,         // Channel 1
+	ML_CH_2,         // Channel 2
+	ML_CH_3,         // Channel 3
+	ML_CH_4,         // Channel 4
+	ML_CH_5,         // Channel 5
+	ML_CH_6,         // Channel 6
+	ML_CH_7,         // Channel 7
+	ML_CH_8,         // Channel 8
+	ML_CH_9,         // Channel 9
+	ML_CH_10,        // Channel 10
+	ML_CH_11,        // Channel 11
+	ML_CH_12,        // Channel 12
+	ML_CH_13,        // Channel 13
+	ML_CH_14,        // Channel 14
+	ML_CH_15,        // Channel 15
+};
+
 // Enum for transmit/receive status
 enum {
   ML_RECEIVING = 0,// Module is transmitting
 	ML_TRANSMITTING  // Module is receiving
 };
 
-// Enum for link status
+// Enum for link active/inactive
 enum {
   ML_LINK_DOWN = 0,// Link is down
 	ML_LINK_UP       // Link is up
@@ -100,6 +120,20 @@ enum {
   ML_NO_ERROR = 0,  // No error
   ML_SYNCERROR      // Sync. error between remote and station
 };
+
+// Enum for link communication phase
+enum {
+  ML_LINK_COM_ASSOCIATION = 0, // Association process ongoing
+	ML_LINK_COM_CHANGEKEY,       // Change of key process ongoing
+  ML_LINK_COM_NORMAL,          // Normal communication ongoing
+};
+
+// Enums for states of the MirrorLink driver
+#if defined(MIRRORLINK_OSREMOTE)
+enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_BUFFERING, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
+#else
+enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
+#endif
 
 #if defined(MIRRORLINK_OSREMOTE)
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);

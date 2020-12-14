@@ -44,7 +44,7 @@ function showStatus() {
       row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
       id('mlsp').deleteRow(1);
       jd=JSON.parse(xhr.responseText);
-      row=id('mlsr').insertRow(-1);
+      row=id('mlsp').insertRow(-1);
       row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>"  + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx +")</td>" + "<td align='center'>("+jd.encryption +")</td>" + "<td align='center'>("+jd.packettime +" msec)</td>" + "<td align='center'>("+jd.notxtime +" sec)</td>" + "</tr>";
     };
   }
