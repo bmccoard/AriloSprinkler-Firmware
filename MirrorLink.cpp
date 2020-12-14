@@ -927,7 +927,7 @@ void MirrorLinkState(void) {
       else {
         Serial.println(F("STATE: MIRRORLINK_ASSOCIATE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-        MirrorLink.sendTimer = os.now_tz();
+        MirrorLink.sendTimer = 0;
         MirrorLinkReceiveInit();
       }
 #endif // defined(MIRRORLINK_OSREMOTE)
@@ -944,7 +944,8 @@ void MirrorLinkState(void) {
         MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
         MirrorLinkReceiveInit();
 #else
-      if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
+      if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL)
+          && (MirrorLinkTransmitStatus() == true)) {
         Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
         MirrorLinkReceiveInit();
@@ -983,7 +984,6 @@ void MirrorLinkState(void) {
         MirrorLinkReceiveInit();
       }
       else if (MirrorLink.sendTimer <= os.now_tz()) {
-        MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         // Calculate transmission-free time based on duty cycle and time of last message
@@ -1356,19 +1356,22 @@ void MirrorLinkWork(void) {
       }
       // If association request sent
       else if (MirrorLinkTransmitStatus() == true) {
+        uint32_t timeMillis = millis();
+        if (MirrorLink.txTime < timeMillis) MirrorLink.txTime = timeMillis - MirrorLink.txTime;
         // Wait for answer to association command
         MirrorLinkReceiveInit();
       }
 #else
       // Wait for associating request
       if (MirrorLinkReceiveStatus() == true) {
-        // If reception register send association feedback
-        MirrorLinkTransmit();
+        // Start transmission timer
+        MirrorLink.sendTimer = (os.now_tz() + (time_t)(MIRRORLINK_RXTX_DEAD_TIME)); 
       }
-      // If association request sent
-      else if (MirrorLinkTransmitStatus() == true) {
-        // Switch back to receiver mode
-        MirrorLinkReceiveInit();
+      // If transmission timer is due
+      else if (MirrorLink.sendTimer == os.now_tz()) {
+        MirrorLink.sendTimer = 0;
+        // If association request sent
+        MirrorLinkTransmit();
       }
       MirrorLinkStayAliveControl();
 #endif // defined(MIRRORLINK_OSREMOTE)
