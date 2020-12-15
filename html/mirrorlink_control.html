@@ -9,7 +9,7 @@ table#mlsr th { border: 1px solid black;}
 table#mlsr td { border: 1px solid black; border-collapse: collapse;}</style>
 <caption><b>Radio Status</caption><br><br>
 <table cellspacing=4 id='mlsr'>
-  <tr><td>Frequency&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Link Status&nbsp&nbsp</td></tr>
+  <tr><td>Frequency&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Link Status&nbsp&nbsp</td><td>Association Status&nbsp&nbsp</td><td>Association Attempts&nbsp&nbsp</td></tr>
   <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
@@ -41,7 +41,7 @@ function showStatus() {
       id('mlsr').deleteRow(1);
       var jd=JSON.parse(xhr.responseText);
       var row=id('mlsr').insertRow(-1);
-      row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "</tr>";
+      row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "<td align='center'>("+jd.assocst +")</td>" + "<td align='center'>("+jd.assocatm +")</td>" + "</tr>";
       id('mlsp').deleteRow(1);
       jd=JSON.parse(xhr.responseText);
       row=id('mlsp').insertRow(-1);

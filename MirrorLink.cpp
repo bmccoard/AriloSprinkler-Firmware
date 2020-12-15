@@ -87,11 +87,12 @@ struct MIRRORLINK {
   time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
   time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
   float frequency;                          // Frequency in use
-  uint16_t snrLocal;                        // Local SNR (local reception)
-  int16_t rssiLocal;                        // Local RSSI (local reception)
   uint32_t packetsSent;                     // Number of sent packets
   uint32_t packetsReceived;                 // Number of received packets
   uint16_t packetExchCtr;                   // Counter to control sequence of packets exchanged in the link
+  uint16_t associationAttempts;             // Counter to control the number of association attempts
+  uint16_t snrLocal;                        // Local SNR (local reception)
+  int16_t rssiLocal;                        // Local RSSI (local reception)
 #if defined(MIRRORLINK_OSREMOTE)
   uint16_t snrRemote;                       // Remote SNR (remote reception)
   int16_t rssiRemote;                       // Remote RSSI (remote reception)
@@ -371,12 +372,22 @@ String MirrorLinkStatus() {
 	mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"rssis\":[";
   mirrorLinkInfo += "\"";
-  mirrorLinkInfo += String(MirrorLink.rssiLocal);
+  if (MirrorLink.status.link == ML_LINK_UP) {
+    mirrorLinkInfo += String(MirrorLink.rssiLocal);
+  }
+  else {
+    mirrorLinkInfo += "N.A.";
+  }
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += ",\r\n";
   mirrorLinkInfo += "\"";
   #if defined(MIRRORLINK_OSREMOTE)
-  mirrorLinkInfo += String(MirrorLink.rssiRemote);
+  if (MirrorLink.status.link == ML_LINK_UP) {
+    mirrorLinkInfo += String(MirrorLink.rssiRemote);
+  }
+  else {
+    mirrorLinkInfo += "N.A.";
+  }
   #else
   mirrorLinkInfo += "N.A.";
   #endif // defined(MIRRORLINK_OSREMOTE)
@@ -384,12 +395,22 @@ String MirrorLinkStatus() {
 	mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"snrs\":[";
   mirrorLinkInfo += "\"";
-  mirrorLinkInfo += String(((float)MirrorLink.snrLocal) / 10);
+  if (MirrorLink.status.link == ML_LINK_UP) {
+    mirrorLinkInfo += String(((float)MirrorLink.snrLocal) / 10);
+  }
+  else {
+    mirrorLinkInfo += "N.A.";
+  }
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += ",\r\n";
   mirrorLinkInfo += "\"";
   #if defined(MIRRORLINK_OSREMOTE)
-  mirrorLinkInfo += String(((float)MirrorLink.snrRemote) / 10);
+  if (MirrorLink.status.link == ML_LINK_UP) {
+    mirrorLinkInfo += String(((float)MirrorLink.snrRemote) / 10);
+  }
+  else {
+    mirrorLinkInfo += "N.A.";
+  }
   #else
   mirrorLinkInfo += "N.A.";
   #endif // defined(MIRRORLINK_OSREMOTE)
@@ -403,6 +424,26 @@ String MirrorLinkStatus() {
   else {
     mirrorLinkInfo += "DOWN";
   }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"assocst\":[";
+  mirrorLinkInfo += "\"";
+  switch (MirrorLink.status.comStatus) {
+    case ML_LINK_COM_ASSOCIATION:
+      mirrorLinkInfo += "ASSOCIATING";
+      break;
+    case ML_LINK_COM_CHANGEKEY:
+      mirrorLinkInfo += "CHANGING KEY";
+      break;
+    case ML_LINK_COM_NORMAL:
+      mirrorLinkInfo += "ASSOCIATED";
+      break;
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"assocatm\":[";
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += String(MirrorLink.associationAttempts);
   mirrorLinkInfo += "\"";
 	mirrorLinkInfo += "]}";
 	return mirrorLinkInfo;
@@ -436,6 +477,7 @@ void MirrorLinkInit(void) {
   speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
   MirrorLink.packetsSent = 0;
   MirrorLink.packetsReceived = 0;
+  MirrorLink.associationAttempts = 0;
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -571,6 +613,7 @@ void MirrorLinkTransmit(void) {
   // If not associated or change key process
   if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION)
       || (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
+    MirrorLink.associationAttempts++;
 #if defined(MIRRORLINK_OSREMOTE)
     // Initialized packetExchCtr with random number
     MirrorLink.packetExchCtr = random(16383);
@@ -814,6 +857,10 @@ bool MirrorLinkReceiveStatus(void) {
       MirrorLink.key[3] = SPECK_DEFAULT_KEY_N4;
       speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
       speck_decrypt(encoded, buffer, mirrorLinkSpeckKeyExp);
+
+      // Network ID match flag
+      networkIdMatch = (bool)(MirrorLink.status.networkId == (0xFF & (buffer[0] >> 24)));
+
       if (  (MirrorLink.moduleState == ERR_NONE)
           &&(networkIdMatch) ) {
         rxSuccessful = true;
