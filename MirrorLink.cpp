@@ -796,11 +796,11 @@ bool MirrorLinkReceiveStatus(void) {
       Serial.println(MirrorLink.moduleState);
     }
     else {
+#if defined(MIRRORLINK_OSREMOTE)
       Serial.println(F(""));
       Serial.print(F("Entering ML_LINK_COM_ASSOCIATION mode "));
       Serial.println(MirrorLink.status.comStatus);
       Serial.println(F(""));
-#if defined(MIRRORLINK_OSREMOTE)
       // Change communication mode to Association
       MirrorLink.status.comStatus = ML_LINK_COM_ASSOCIATION;
 #else
@@ -843,6 +843,8 @@ bool MirrorLinkReceiveStatus(void) {
       else {
         // packet was received, but Network ID mismatch
         Serial.println(F("Network ID mismatch!"));
+        // Change communication mode to association
+        MirrorLink.status.comStatus = ML_LINK_COM_ASSOCIATION;
       }
 #endif // defined(MIRRORLINK_OSREMOTE)
     }
@@ -1329,6 +1331,10 @@ void MirrorLinkState(void) {
         // Delay to allow the remote to turn to rx mode
         delay(100);
       }
+      else if (MirrorLink.status.comStatus == ML_LINK_COM_ASSOCIATION) {
+        Serial.println(F("SATE: MIRRORLINK_ASSOCIATE"));
+        MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+      }
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
   }
@@ -1368,8 +1374,8 @@ void MirrorLinkWork(void) {
         MirrorLink.sendTimer = (os.now_tz() + (time_t)(MIRRORLINK_RXTX_DEAD_TIME)); 
       }
       // If transmission timer is due
-      else if (MirrorLink.sendTimer == os.now_tz()) {
-        MirrorLink.sendTimer = 0;
+      else if (   (MirrorLink.sendTimer == os.now_tz())
+               && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
         // If association request sent
         MirrorLinkTransmit();
       }
@@ -1395,7 +1401,7 @@ void MirrorLinkWork(void) {
       // Calculate idle time until next send period
 #else
       // Send answer if not yet transmitted
-      if (   (MirrorLink.sendTimer == (os.now_tz() + (time_t)(MIRRORLINK_RXTX_MAX_TIME - MIRRORLINK_RXTX_DEAD_TIME)))
+      if (   (MirrorLink.sendTimer == (os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME))
           && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
         MirrorLinkTransmit();
       }
