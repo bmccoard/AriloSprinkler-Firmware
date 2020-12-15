@@ -1334,6 +1334,8 @@ void MirrorLinkState(void) {
       else if (MirrorLink.status.comStatus == ML_LINK_COM_ASSOCIATION) {
         Serial.println(F("SATE: MIRRORLINK_ASSOCIATE"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+        MirrorLink.sendTimer = 0;
+        MirrorLinkReceiveInit();
       }
 #endif // defined(MIRRORLINK_OSREMOTE)
       break;
