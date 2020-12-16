@@ -482,11 +482,16 @@ String MirrorLinkStatus() {
   mirrorLinkInfo += "],";
     mirrorLinkInfo += "\"notxtime\":[";
   mirrorLinkInfo += "\"";
-  if ( MirrorLink.status.mirrorlinkState == MIRRORLINK_BUFFERING) {
-    mirrorLinkInfo += String(MirrorLink.sendTimer);
+  if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+    if (MirrorLink.status.mirrorlinkState == MIRRORLINK_BUFFERING) {
+      mirrorLinkInfo += String((MirrorLink.sendTimer - os.now_tz()));
+    }
+    else {
+      mirrorLinkInfo += "Calculating...";
+    }
   }
   else {
-    mirrorLinkInfo += "Calculating...";
+      mirrorLinkInfo += "N.A.";
   }
   mirrorLinkInfo += "\"";
 	mirrorLinkInfo += "]}";
@@ -499,7 +504,7 @@ void MirrorLinkInit(void) {
   MirrorLink.status.mirrorLinkStationType = (uint32_t)(os.iopts[IOPT_ML_STATIONTYPE]);
 
   // TODO: Remove!
-  MirrorLink.status.mirrorLinkStationType = ML_STATION; //ML_REMOTE;
+  MirrorLink.status.mirrorLinkStationType = ML_STATION; //ML_REMOTE; //ML_STATION;
 
   MirrorLink.status.networkId = (uint32_t)(os.iopts[IOPT_ML_NETWORKID]);
   MirrorLink.status.receivedFlag = (uint32_t)false;
@@ -622,6 +627,10 @@ bool MirrorLinkTransmitStatus(void) {
       //       transmission data rate using getDataRate()
       txSuccessful = true;
 
+      // Calculate transmission time
+      uint32_t timeMillis = millis();
+      if (MirrorLink.txTime < timeMillis) MirrorLink.txTime = timeMillis - MirrorLink.txTime;
+
       // Increase transmission counter
       MirrorLink.packetsSent++;
     } 
@@ -661,13 +670,13 @@ void MirrorLinkTransmit(void) {
   if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION)
       || (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
     MirrorLink.associationAttempts++;
+    MirrorLink.txTime = millis();
     if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
       // Initialized packetExchCtr with random number
       MirrorLink.packetExchCtr = random(16383);
       // Generate first part of future random key for the link
       MirrorLink.associationKey[0] = (uint32_t)random(INT32_MAX);
       plain[1] = MirrorLink.associationKey[0];
-      MirrorLink.txTime = millis();
     }
     else {
       // Increase packetExchCtr value
@@ -679,11 +688,11 @@ void MirrorLinkTransmit(void) {
   }
   // Else if mode is normal
   else {
+    MirrorLink.txTime = millis();
     // Increase packetExchCtr value
     MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
     if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
       plain[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
-      MirrorLink.txTime = millis();
     }
     else {
       // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
@@ -1045,11 +1054,12 @@ void MirrorLinkState(void) {
         }
       }
       else {
-        if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL)
-            && (MirrorLinkTransmitStatus() == true)) {
-          Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
-          MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
-          MirrorLinkReceiveInit();
+        if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
+          if (MirrorLinkTransmitStatus() == true) {
+            Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
+            MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+            MirrorLinkReceiveInit();
+          }
         }
       }
       break;
@@ -1073,8 +1083,6 @@ void MirrorLinkState(void) {
       // change state to receive
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         if (MirrorLinkTransmitStatus() == true) {
-          uint32_t timeMillis = millis();
-          if (MirrorLink.txTime < timeMillis) MirrorLink.txTime = timeMillis - MirrorLink.txTime;
           Serial.print(F("Transmission duration: "));
           Serial.println(MirrorLink.txTime);
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
@@ -1463,8 +1471,6 @@ void MirrorLinkWork(void) {
         }
         // If association request sent
         else if (MirrorLinkTransmitStatus() == true) {
-          uint32_t timeMillis = millis();
-          if (MirrorLink.txTime < timeMillis) MirrorLink.txTime = timeMillis - MirrorLink.txTime;
           // Wait for answer to association command
           MirrorLinkReceiveInit();
         }
@@ -1493,9 +1499,10 @@ void MirrorLinkWork(void) {
         // Send buffer
         // If number of buffered commands > 0
         // AND previous command successfully sent
-        if (   (MirrorLink.bufferedCommands > 0)
-            && (MirrorLinkTransmitStatus() == true)) {
-          MirrorLinkTransmit();
+        if (MirrorLink.bufferedCommands > 0) {
+          if (MirrorLinkTransmitStatus() == true) {
+            MirrorLinkTransmit();
+          }
         }
         // Empty buffer
         // Calculate idle time until next send period
