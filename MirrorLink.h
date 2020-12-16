@@ -25,24 +25,18 @@
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 // Config defines
-#if defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
 #define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  30//3600   // Period in seconds to send the regular commands to remote station (fast)
 #define MIRRORLINK_REGCOMMANDS_MID_PERIOD   60//86400  // Period in seconds to send the regular commands to remote station (mid)
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  90//604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_MAX_DUTY_CYCLE           1000//10     // Maximum duty cycle in tenths of % (1 = 0.1)
-#endif // defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
 #define MIRRORLINK_STAYALIVE_PERIOD         35     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #define ML_FREQUENCY                        866.2  // MirrorLink Frequency
 #define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)
-#if defined(MIRRORLINK_OSREMOTE)
 #define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
-#else
-#define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
-#endif
 
 // Speck64/128 encryption based on Moritz Bitsch implementation
 #define SPECK_TYPE                          uint32_t
@@ -134,19 +128,12 @@ enum {
 };
 
 // Enums for states of the MirrorLink driver
-#if defined(MIRRORLINK_OSREMOTE)
 enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_BUFFERING, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
-#else
-enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
-#endif
 
-#if defined(MIRRORLINK_OSREMOTE)
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
 void MirrorLinkPeriodicCommands();
-#else
 uint32_t MirrorLinkGetCmd(uint8_t cmd);
-#endif //defined(MIRRORLINK_OSREMOTE)
-
+uint8_t MirrorLinkGetStationType(void);
 void MirrorLinkInit();
 void MirrorLinkMain();
 String MirrorLinkStatus();

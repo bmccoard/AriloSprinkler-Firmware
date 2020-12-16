@@ -825,14 +825,16 @@ void server_delete_program() {
 		pd.eraseall();
 	} else if (pid < pd.nprograms) {
 		pd.del(pid);
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-		// Send program deletion request
-		// bit 0 to 6 = program number (max. is 40)
-		// bit 7 = Add (1) or remove (0)
-		// bit 8 to 16 = Not used
-		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (uint32_t)(pid & 0xFF));
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send program deletion request
+			// bit 0 to 6 = program number (max. is 40)
+			// bit 7 = Add (1) or remove (0)
+			// bit 8 to 16 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (uint32_t)(pid & 0xFF));
+		}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	} else {
 		handle_return(HTML_DATA_OUTOFBOUND);
 	}
@@ -892,9 +894,9 @@ void server_change_program() {
 #endif
 
 	byte i;
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	bool newProgram = false;
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 	ProgramStruct prog;
 
@@ -988,75 +990,78 @@ void server_change_program() {
 			handle_return(HTML_DATA_OUTOFBOUND);
 		}
 		else {
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-			newProgram = true;
-			if (numPrograms > 0) {
-				pid = numPrograms - 1;
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+			if (MirrorLinkGetStationType() == ML_REMOTE) {
+				newProgram = true;
+				if (numPrograms > 0) {
+					pid = numPrograms - 1;
+				}
+				else {
+					pid = numPrograms;
+				}
+				// Program name needs to be modified to match the pid number
+				sprintf_P(prog.name, "%d", pid);
+				if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
 			}
-			else {
-				pid = numPrograms;
-			}
-			// Program name needs to be modified to match the pid number
-			sprintf_P(prog.name, "%d", pid);
-			if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 		}
 	} else {
 		if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
 	}
 
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-	// Send program data over MirrorLink
-	uint32_t payload = 0;
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	if (MirrorLinkGetStationType() == ML_REMOTE) {
+		// Send program data over MirrorLink
+		uint32_t payload = 0;
 
-	if (newProgram == true) {
-		// Send program creation request
+		if (newProgram == true) {
+			// Send program creation request
+			// bit 0 to 6 = program number (max. is 40)
+			// bit 7 = Add (1) or remove (0)
+			// bit 8 to 16 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
+		}
+
+		// Send program starttime
 		// bit 0 to 6 = program number (max. is 40)
-		// bit 7 = Add (1) or remove (0)
-		// bit 8 to 16 = Not used
+		// bit 7 to 8 = start time number (max. is 4 for each program)
+		// bit 9 to 24 = start time
+		// bit 25 = Starttime type
+		// bit 26 = Not used
 		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
+		for (i=0;i<MAX_NUM_STARTTIMES;i++) {
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
+		}
+
+		// Send program duration
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 to 14 = sid
+		// bit 15 to 25 = time (min)
+		// bit 26 = Not used
+		// bit 27 to 31 = cmd
+		for(i=0;i<os.nstations;i++) {
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)(((uint32_t)(0x7FF & ((prog.durations[i]) / 60)) << 15) | (((uint32_t)i) << 7) | (uint32_t)(pid)));
+		}
+
+		// Send program day setup
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 to 22 = days
+		// bit 23 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
+
+		// Send program main setup
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 = enable/disable
+		// bit 8 = use weather
+		// bit 9 to 10 = Odd/even restriction
+		// bit 11 to 12 = schedule type
+		// bit 13 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
 	}
-
-	// Send program starttime
-	// bit 0 to 6 = program number (max. is 40)
-	// bit 7 to 8 = start time number (max. is 4 for each program)
-	// bit 9 to 24 = start time
-	// bit 25 = Starttime type
-	// bit 26 = Not used
-	// bit 27 to 31 = cmd
-	for (i=0;i<MAX_NUM_STARTTIMES;i++) {
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
-	}
-
-	// Send program duration
-	// bit 0 to 6 = program number (max. is 40)
-	// bit 7 to 14 = sid
-	// bit 15 to 25 = time (min)
-	// bit 26 = Not used
-	// bit 27 to 31 = cmd
-	for(i=0;i<os.nstations;i++) {
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)(((uint32_t)(0x7FF & ((prog.durations[i]) / 60)) << 15) | (((uint32_t)i) << 7) | (uint32_t)(pid)));
-	}
-
-	// Send program day setup
-	// bit 0 to 6 = program number (max. is 40)
-	// bit 7 to 22 = days
-	// bit 23 to 26 = Not used
-	// bit 27 to 31 = cmd
-	MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
-
-	// Send program main setup
-	// bit 0 to 6 = program number (max. is 40)
-	// bit 7 = enable/disable
-	// bit 8 = use weather
-	// bit 9 to 10 = Odd/even restriction
-	// bit 11 to 12 = schedule type
-	// bit 13 to 26 = Not used
-	// bit 27 to 31 = cmd
-	MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
-
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && !defined(MIRRORLINK_OSREMOTE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	handle_return(HTML_SUCCESS);
 }
 
@@ -1517,32 +1522,34 @@ void server_change_options()
 	if (findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("loc"), true)) {
 		urlDecode(tmp_buffer);
 
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-		// Send location through Mirrorlink:
-		char location[TMP_BUFFER_SIZE+MAX_SOPTS_SIZE+1];
-		strcpy_P(location, tmp_buffer);
-		char * latitude = strtok((char *)location, ",");
-		char * longitude = strtok(NULL, ",");
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send location through Mirrorlink:
+			char location[TMP_BUFFER_SIZE+MAX_SOPTS_SIZE+1];
+			strcpy_P(location, tmp_buffer);
+			char * latitude = strtok((char *)location, ",");
+			char * longitude = strtok(NULL, ",");
 
-		// Encode latitude and longitude in 23 bit ints
-    	const float weight = 180./(1 << 23);
-		int32_t fp_lat = (int) (0.5f + atof(latitude) / weight);
-		int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
+			// Encode latitude and longitude in 23 bit ints
+			const float weight = 180./(1 << 23);
+			int32_t fp_lat = (int) (0.5f + atof(latitude) / weight);
+			int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
 
-		// Send station command over MirrorLink
-		// Payload format: 
-		// bit 0 to 23 = latitude
-		// bit 24 to 26 = Not used
-		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0xFFFFFF & fp_lat));
+			// Send station command over MirrorLink
+			// Payload format: 
+			// bit 0 to 23 = latitude
+			// bit 24 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0xFFFFFF & fp_lat));
 
-		// Send station command over MirrorLink
-		// Payload format: 
-		// bit 0 to 23 = longitude
-		// bit 24 to 26 = Not used
-		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+			// Send station command over MirrorLink
+			// Payload format: 
+			// bit 0 to 23 = longitude
+			// bit 24 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));
+		}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 		if (os.sopt_save(SOPT_LOCATION, tmp_buffer)) { // if location string has changed
 			weather_change = true;
@@ -1750,15 +1757,17 @@ void server_change_manual() {
 				q->dur = timer;
 				q->sid = sid;
 				q->pid = 99;	// testing stations are assigned program index 99
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-				// Send station command over MirrorLink
-				// Payload format: 
-				// bit 0 = status (1 = On, 0 = Off)
-				// bit 1 to 8 = sid
-				// bit 9 to 24 = time(sec)
-				// bit 25 to 26 = Not used
-				// bit 27 to 31 = cmd
-				MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (uint32_t)(((uint32_t)(q->dur) << 9) | (((uint32_t)(sid)) << 1) | (uint32_t)1));
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+				if (MirrorLinkGetStationType() == ML_REMOTE) {
+					// Send station command over MirrorLink
+					// Payload format: 
+					// bit 0 = status (1 = On, 0 = Off)
+					// bit 1 to 8 = sid
+					// bit 9 to 24 = time(sec)
+					// bit 25 to 26 = Not used
+					// bit 27 to 31 = cmd
+					MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (uint32_t)(((uint32_t)(q->dur) << 9) | (((uint32_t)(sid)) << 1) | (uint32_t)1));
+				}
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 				schedule_all_stations(curr_time);
@@ -1769,16 +1778,18 @@ void server_change_manual() {
 			handle_return(HTML_DATA_MISSING);
 		}
 	} else {	// turn off station
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-		// Send station command over MirrorLink
-		// Payload format: 
-		// bit 0 = status (1 = On, 0 = Off)
-		// bit 1 to 8 = sid
-		// bit 9 to 24 = time(sec)
-		// bit 25 to 26 = Not used
-		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0xFFFF & sid) << 1));
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send station command over MirrorLink
+			// Payload format: 
+			// bit 0 = status (1 = On, 0 = Off)
+			// bit 1 to 8 = sid
+			// bit 9 to 24 = time(sec)
+			// bit 25 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0xFFFF & sid) << 1));
+		}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 		turn_off_station(sid, curr_time);
 	}
 	handle_return(HTML_SUCCESS);

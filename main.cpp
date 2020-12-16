@@ -215,14 +215,16 @@ void ui_state_machine() {
 					ui_state = UI_STATE_DISP_IP;					
 				} else {	// if no other button is clicked, reboot
 					if(!ui_confirm(PSTR("Reboot device?"))) {ui_state = UI_STATE_DEFAULT; break;}
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-					// Send program creation request
-					// bit 0 to 26 = free
-					// bit 27 to 31 = cmd
-					MirrorLinkBuffCmd((uint8_t)ML_STATIONREBOOT, (uint32_t)(0));
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+					if (MirrorLinkGetStationType() == ML_REMOTE) {
+						// Send program creation request
+						// bit 0 to 26 = free
+						// bit 27 to 31 = cmd
+						MirrorLinkBuffCmd((uint8_t)ML_STATIONREBOOT, (uint32_t)(0));
+					}
 #else
 					os.reboot_dev(REBOOT_CAUSE_BUTTON);
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 				}
 			} else {	// clicking B2: display MAC
 				os.lcd.clear(0, 1);
@@ -1020,9 +1022,11 @@ void do_loop()
 			reboot_notification = 0;
 			push_message(NOTIFY_REBOOT);
 		}
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-		// Send periodic MirrorLink commands to remote
-		MirrorLinkPeriodicCommands();
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send periodic MirrorLink commands to remote
+			MirrorLinkPeriodicCommands();
+		}
 #endif
 	}
 
@@ -1876,17 +1880,19 @@ void perform_ntp_sync() {
 			setTime(t);
 			RTC.set(t);
 			DEBUG_PRINTLN(RTC.get());
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
-			// Send Time commands over MirrorLink
-			// Payload format:
-			// bit 0 to 7 = Time zone
-			// bit 27 to 31 = cmd
-			MirrorLinkBuffCmd((uint8_t)ML_TIMEZONESYNC, (uint32_t)(0xFF & (os.iopts[IOPT_TIMEZONE])));
-			// Payload format: 
-			// bit 0 to 26 = Unix Timestamp in minutes! not seconds
-			// bit 27 to 31 = cmd
-			MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (t / 60)));
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE) && defined(MIRRORLINK_OSREMOTE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+			if (MirrorLinkGetStationType() == ML_REMOTE) {
+				// Send Time commands over MirrorLink
+				// Payload format:
+				// bit 0 to 7 = Time zone
+				// bit 27 to 31 = cmd
+				MirrorLinkBuffCmd((uint8_t)ML_TIMEZONESYNC, (uint32_t)(0xFF & (os.iopts[IOPT_TIMEZONE])));
+				// Payload format: 
+				// bit 0 to 26 = Unix Timestamp in minutes! not seconds
+				// bit 27 to 31 = cmd
+				MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (t / 60)));
+			}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 			#if !defined(ESP8266) && !defined(ESP32)
 			// if rtc was uninitialized and now it is, restart
 			if(rtc_zero && now()>978307200L) {

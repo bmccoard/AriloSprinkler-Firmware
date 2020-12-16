@@ -50,7 +50,6 @@ typedef unsigned long ulong;
 
 #if defined(ESP32)
 #define MIRRORLINK_ENABLE    // If defined, MirrorLink LORA module present
-//#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
 #endif
 
 #if !defined(ESP32)
