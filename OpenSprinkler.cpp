@@ -167,6 +167,29 @@ const char iopt_json_names[] PROGMEM =
 	"subn4"
 	"wimod"
 	"reset"
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	"mla01"
+	"mla02"
+	"mla03"
+	"mla04"
+	"mla05"
+	"mla06"
+	"mla07"
+	"mla08"
+	"mla09"
+	"mla10"
+	"mla11"
+	"mla12"
+	"mla13"
+	"mla14"
+	"mla15"
+	"mla16"
+	"mlnid"
+	"mlrct"
+	"mldc1"
+	"mldc2"
+	"mltyp"
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	;
 
 // for String options
@@ -252,8 +275,32 @@ const char iopt_prompts[] PROGMEM =
 	"Subnet mask3:   "
 	"Subnet mask4:   "
 	"WiFi mode?      "
-	"Factory reset?  ";
-	
+	"Factory reset?  "
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	"ML AssocKey  1: "
+	"ML AssocKey  2: "
+	"ML AssocKey  3: "
+	"ML AssocKey  4: "
+	"ML AssocKey  5: "
+	"ML AssocKey  6: "
+	"ML AssocKey  7: "
+	"ML AssocKey  8: "
+	"ML AssocKey  9: "
+	"ML AssocKey 10: "
+	"ML AssocKey 11: "
+	"ML AssocKey 12: "
+	"ML AssocKey 13: "
+	"ML AssocKey 14: "
+	"ML AssocKey 15: "
+	"ML AssocKey 16: "
+	"ML NetworkID:   "
+	"ML RadioCtr:    "
+	"ML DutyCycle 1: "
+	"ML DutyCycle 1: "
+	"ML StationType: "
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	;
+
 // string options do not have prompts 
 
 /** Option maximum values (stored in PROGMEM to reduce RAM usage) */
@@ -321,7 +368,32 @@ const byte iopt_max[] PROGMEM = {
 	255,
 	255,
 	255,
+	#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	1,
+#else
 	1
+#endif
 };
 
 // string options do not have maximum values
@@ -396,7 +468,32 @@ byte OpenSprinkler::iopts[] = {
 	255,// subnet mask 3
 	0,
 	WIFI_M_AP, // wifi mode
-	0		// reset
+	#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	0, // reset
+	3,
+	2,
+	1,
+	0,
+	11,
+	10,
+	9,
+	8,
+	19,
+	18,
+	17,
+	16,
+	27,
+	26,
+	25,
+	24,
+	148,
+	0,
+	0,
+	10,
+	0,
+#else
+	0  // reset
+#endif
 };
 
 /** String option values (stored in RAM) */

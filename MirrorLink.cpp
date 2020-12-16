@@ -62,6 +62,7 @@ SX1262 lora = new Module(LORA_NSS, LORA_DIO1, LORA_DIO2, LORA_BUSY);
 typedef union {
   uint32_t data;
   struct {
+    uint32_t mirrorLinkStationType : 1;// MirrorLink station type (remote/station)
     uint32_t mirrorlinkState : 3;      // Operation mode of the MirrorLink system
     uint32_t networkId : 8;            // Network ID for the Link
     uint32_t receivedFlag : 1;         // Flag to indicate that a packet was received
@@ -74,7 +75,7 @@ typedef union {
     uint32_t comStatus : 2;            // Shows the link communication status
     uint32_t powerLevel : 4;           // Power Level for the link
     uint32_t channelNumber : 4;        // Channel number for the link
-    uint32_t free : 4;                 // Free bits
+    uint32_t free : 3;                 // Free bits
   };
 } MirrorLinkStateBitfield;
 
@@ -93,6 +94,7 @@ struct MIRRORLINK {
   uint16_t associationAttempts;             // Counter to control the number of association attempts
   uint16_t snrLocal;                        // Local SNR (local reception)
   int16_t rssiLocal;                        // Local RSSI (local reception)
+  uint16_t dutyCycle;                       // Maximum duty cycle in tenths of % (1 = 0.1)
 #if defined(MIRRORLINK_OSREMOTE)
   uint16_t snrRemote;                       // Remote SNR (remote reception)
   int16_t rssiRemote;                       // Remote RSSI (remote reception)
@@ -452,7 +454,8 @@ String MirrorLinkStatus() {
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
   MirrorLink.moduleState = ERR_NONE;
-  MirrorLink.status.networkId = (uint32_t)MIRRORLINK_NETWORK_ID;
+  MirrorLink.status.mirrorLinkStationType = ML_REMOTE;
+  MirrorLink.status.networkId = (uint32_t)(os.iopts[IOPT_ML_NETWORKID]);
   MirrorLink.status.receivedFlag = (uint32_t)false;
   MirrorLink.status.transmittedFlag = (uint32_t)false;
   MirrorLink.status.enableInterrupt = (uint32_t)true;
@@ -461,8 +464,8 @@ void MirrorLinkInit(void) {
   MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
   MirrorLink.status.rebootRequest = (uint32_t)false;
   MirrorLink.status.stayAlive = (uint32_t)true;
-  MirrorLink.status.powerLevel = (uint32_t)ML_TX_POWER;
-  MirrorLink.status.channelNumber = (uint32_t)ML_CH_0;
+  MirrorLink.status.powerLevel = ((uint32_t)(os.iopts[IOPT_ML_RADIOCTR]) >> 4);
+  MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_RADIOCTR]) & 0xF);
   MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
   MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_STAYALIVE_PERIOD;
   MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
@@ -470,14 +473,15 @@ void MirrorLinkInit(void) {
   MirrorLink.snrLocal = 0;
   MirrorLink.rssiLocal = -200;
   MirrorLink.frequency = (float)ML_FREQUENCY;
-  MirrorLink.key[0] = SPECK_DEFAULT_KEY_N1;
-  MirrorLink.key[1] = SPECK_DEFAULT_KEY_N2;
-  MirrorLink.key[2] = SPECK_DEFAULT_KEY_N3;
-  MirrorLink.key[3] = SPECK_DEFAULT_KEY_N4;
+  MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
+  MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
+  MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
+  MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
   speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
   MirrorLink.packetsSent = 0;
   MirrorLink.packetsReceived = 0;
   MirrorLink.associationAttempts = 0;
+  MirrorLink.dutyCycle = (((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE1] << 8) | ((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE2]));
 #if defined(MIRRORLINK_OSREMOTE)
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
@@ -602,10 +606,10 @@ void MirrorLinkTransmit(void) {
     Serial.println(F(""));
     Serial.println(F("Resetting to default key"));
     Serial.println(F(""));
-    MirrorLink.key[0] = SPECK_DEFAULT_KEY_N1;
-    MirrorLink.key[1] = SPECK_DEFAULT_KEY_N2;
-    MirrorLink.key[2] = SPECK_DEFAULT_KEY_N3;
-    MirrorLink.key[3] = SPECK_DEFAULT_KEY_N4;
+    MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
+    MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
+    MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
+    MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
     speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
   }
 #endif // defined(MIRRORLINK_OSREMOTE)
@@ -851,10 +855,10 @@ bool MirrorLinkReceiveStatus(void) {
       Serial.println(F("Resetting to default key"));
       Serial.println(F(""));
       // Check if it is an association packet
-      MirrorLink.key[0] = SPECK_DEFAULT_KEY_N1;
-      MirrorLink.key[1] = SPECK_DEFAULT_KEY_N2;
-      MirrorLink.key[2] = SPECK_DEFAULT_KEY_N3;
-      MirrorLink.key[3] = SPECK_DEFAULT_KEY_N4;
+      MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
+      MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
+      MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
+      MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
       speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
       speck_decrypt(encoded, buffer, mirrorLinkSpeckKeyExp);
 

@@ -48,6 +48,11 @@ typedef unsigned long ulong;
 #define HW_TYPE_LATCH        0x1A   // DC powered, for DC latching solenoids only, with boost converter and H-bridges
 #define HW_TYPE_UNKNOWN      0xFF
 
+#if defined(ESP32)
+#define MIRRORLINK_ENABLE    // If defined, MirrorLink LORA module present
+//#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
+#endif
+
 #if !defined(ESP32)
 /** Data file names */
 #define IOPTS_FILENAME        "iopts.dat"   // integer options data file
@@ -212,6 +217,29 @@ enum {
 	IOPT_SUBNET_MASK4,
 	IOPT_WIFI_MODE, //ro
 	IOPT_RESET,     //ro
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	IOPT_ML_ASSOC_KEY1BYTE,
+	IOPT_ML_ASSOC_KEY2BYTE,
+	IOPT_ML_ASSOC_KEY3BYTE,
+	IOPT_ML_ASSOC_KEY4BYTE,
+	IOPT_ML_ASSOC_KEY5BYTE,
+	IOPT_ML_ASSOC_KEY6BYTE,
+	IOPT_ML_ASSOC_KEY7BYTE,
+	IOPT_ML_ASSOC_KEY8BYTE,
+	IOPT_ML_ASSOC_KEY9BYTE,
+	IOPT_ML_ASSOC_KEY10BYTE,
+	IOPT_ML_ASSOC_KEY11BYTE,
+	IOPT_ML_ASSOC_KEY12BYTE,
+	IOPT_ML_ASSOC_KEY13BYTE,
+	IOPT_ML_ASSOC_KEY14BYTE,
+	IOPT_ML_ASSOC_KEY15BYTE,
+	IOPT_ML_ASSOC_KEY16BYTE,
+	IOPT_ML_NETWORKID,
+	IOPT_ML_RADIOCTR,
+	IOPT_ML_DUTYCYCLE1,
+	IOPT_ML_DUTYCYCLE2,
+	IOPT_ML_STATIONTYPE,
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	NUM_IOPTS // total number of integer options
 };
 
@@ -425,9 +453,6 @@ enum {
 	#define PIN_FREE_LIST        {} // no free GPIO pin at the moment
 	#define ON_BOARD_GPIN_LIST   {255,255,255,255,255,255,255,255} //  ESP32 on board gpins to be usead as sections, 255 - pin not defined
   	#define STATION_LOGIC  		 0 // GPIO logic ex. for relays connected to grand 0 meens ON
-
-	#define MIRRORLINK_ENABLE    // If defined, MirrorLink LORA module present
-	//#define MIRRORLINK_OSREMOTE  // If defined, MirrorLink LORA device is a OS remote, not OS station
 
 #elif defined(OSPI) // for OSPi
 

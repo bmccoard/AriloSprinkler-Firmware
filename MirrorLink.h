@@ -43,7 +43,6 @@
 #else
 #define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
 #endif
-#define MIRRORLINK_ENCRYPTION_KEY           0x94   // Encryption key for the link
 
 // Speck64/128 encryption based on Moritz Bitsch implementation
 #define SPECK_TYPE                          uint32_t
@@ -57,6 +56,12 @@
 #define SPECK_DEFAULT_KEY_N2                0x0b0a0908
 #define SPECK_DEFAULT_KEY_N3                0x13121110
 #define SPECK_DEFAULT_KEY_N4                0x1b1a1918
+
+// Enum for station types
+enum {
+  ML_STATION = 0,     // Type is station
+  ML_REMOTE,          // Type is remote
+};
 
 // Enum for commands
 enum {
