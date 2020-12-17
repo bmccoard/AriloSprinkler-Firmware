@@ -133,37 +133,53 @@ const char mirrorlink_control_html[] PROGMEM = R"(<head>
 <title>AriloSprinkler MirrorLink Control</title>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
 </head>
-<body>
-<h1>AriloSprinkler MirrorLink Control Panel</h1>
-<style> table, th, td { border: 0px solid black;  border-collapse: collapse;}
-table#mlsr th { border: 1px solid black;}
-table#mlsr td { border: 1px solid black; border-collapse: collapse;}</style>
-<caption><b>Radio Status</caption><br><br>
+<body style='background-color: rgba(195, 247, 208, 0.473)'>
+<h1 style='color:white;background-color:black;width:500px;text-align:center'>AriloSprinkler MirrorLink Control Panel</h1>
+<style> table, th, td { border: 0px solid black; border-collapse: collapse; padding: 5px;}
+table#mlsr th { border: 3px solid black;}
+table#mlsr td { border: 3px solid black; border-collapse: collapse;}</style>
+<caption><b style='color:black'>Radio Status</caption><br><br>
 <table cellspacing=4 id='mlsr'>
 <tr><td>Frequency&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Link Status&nbsp&nbsp</td><td>Association Status&nbsp&nbsp</td><td>Association Attempts&nbsp&nbsp</td></tr>
 <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
-<style> table, th, td { border: 0px solid black;  border-collapse: collapse;}
-table#mlsp th { border: 1px solid black;}
-table#mlsp td { border: 1px solid black; border-collapse: collapse;}</style>
-<caption><b>Packet Status</caption><br><br>
+<style> table, th, td { border: 0px solid black;  border-collapse: collapse; padding: 5px;}
+table#mlsp th { border: 3px solid black;}
+table#mlsp td { border: 3px solid black; border-collapse: collapse;}</style>
+<caption><b style='color:black'>Packet Status</caption><br><br>
 <table cellspacing=4 id='mlsp'>
-<tr><td>Buffered Packets&nbsp&nbsp</td><td>Packets Sent&nbsp&nbsp</td><td>Packets Received&nbsp&nbsp</td><td>Encryption&nbsp&nbsp</td><td>Packet Sent Time&nbsp&nbsp</td><td>No TX Time&nbsp&nbsp</td>
+<tr><td>Buffered Packets&nbsp&nbsp</td><td>Packets Sent&nbsp&nbsp</td><td>Packets Received&nbsp&nbsp</td><td>Encryption&nbsp&nbsp</td><td>Packet Sent Time&nbsp&nbsp</td><td>No TX Time&nbsp&nbsp</td><td>Mode&nbsp&nbsp</td>
 <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
 <table cellspacing=16>
-<tr><td><input type='password' name='mlpass' id='mlpass' style='font-size:14pt;height:28px;'></td><td>MirrorLink Password</td></tr>
-<tr><td><input type='text' name='mlfreq' id='mlfreq' style='font-size:14pt;height:28px;'></td><td>MirrorLink Frequency</td></tr>
-<tr><td><input type='text' name='mlplim' id='mlplim' style='font-size:14pt;height:28px;'></td><td>MirrorLink Power Limit</td></tr>
-<tr><td><input type='checkbox' name='mlrem' id='mlrem' style='font-size:14pt;height:28px;'></td><td>MirrorLink Remote</td></tr>
+<tr><td><input type='number' name='mlpass1' id='mlpass1' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px;'></td><td>Association Key 1 (32bit max)</td></tr>
+<tr><td><input type='number' name='mlpass2' id='mlpass2' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 2 (32bit max)</td></tr>
+<tr><td><input type='number' name='mlpass3' id='mlpass3' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 3 (32bit max)</td></tr>
+<tr><td><input type='number' name='mlpass4' id='mlpass4' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 4 (32bit max)</td></tr>
+<tr><td><input type='number' name='mlchan' id='mlchan' min='0' max='15' style='font-size:14pt;height:28px;'></td><td>Channel (0 to 15)</td></tr>
+<tr><td><input type='number' name='mlplim' id='mlplim' min='0' max='30' style='font-size:14pt;height:28px;'></td><td>Power Limit (0 to 30dBm)</td></tr>
+<tr><td><input type='checkbox' name='mlrem' id='mlrem' value='1' style='font-size:14pt;height:28px;'></td><td>Remote Mode</td></tr>
 <tr><td colspan=2><p id='msg'></p></td></tr>
-<tr><td><button type='button' id='butt' onclick='ml();' style='height:36px;width:180px'>Submit</button></td><td></td></tr>
+<tr><td><button type='button' id='butt' onclick='mlc();' style='height:36px;width:130px'>Submit</button></td><td></td></tr>
 </table>
 <script>
 function id(s) {return document.getElementById(s);}
-function ml() {
+function mlc() {
+id('msg').innerHTML='';
+var xhr=new XMLHttpRequest();
+xhr.onreadystatechange=function() {
+if(xhr.readyState==4 && xhr.status==200) {
+var jd=JSON.parse(xhr.responseText);
+if(jd.result==1) { return; }
+id('msg').innerHTML='<b><font color=red>Error code: '+jd.result+', item: '+jd.item+'</font></b>'; id('butt').innerHTML='Submit'; id('butt').disabled=false;id('mlpass1').disabled=false;id('mlpass2').disabled=false;id('mlpass3').disabled=false;id('mlpass4').disabled=false;id('mlchan').disabled=false;id('mlplim').disabled=false;id('mlrem').disabled=false;
+}
+};
+var check = 0;
+if (id('mlrem').checked == true) { check = 1; }
+var comm='mlchconfig?mlpass1='+encodeURIComponent(id('mlpass1').value)+'&mlpass2='+encodeURIComponent(id('mlpass2').value)+'&mlpass3='+encodeURIComponent(id('mlpass3').value)+'&mlpass4='+encodeURIComponent(id('mlpass4').value)+'&mlchan='+encodeURIComponent(id('mlchan').value)+'&mlplim='+encodeURIComponent(id('mlplim').value)+'&mlrem='+check;
+xhr.open('GET', comm, true); xhr.send();
 }
 function showStatus() {
 var xhr=new XMLHttpRequest();
@@ -176,7 +192,7 @@ row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td alig
 id('mlsp').deleteRow(1);
 jd=JSON.parse(xhr.responseText);
 row=id('mlsp').insertRow(-1);
-row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>"  + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx +")</td>" + "<td align='center'>("+jd.encryption +")</td>" + "<td align='center'>("+jd.packettime +" msec)</td>" + "<td align='center'>("+jd.notxtime +" sec)</td>" + "</tr>";
+row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>"  + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx +")</td>" + "<td align='center'>("+jd.encryption +")</td>" + "<td align='center'>("+jd.packettime +" msec)</td>" + "<td align='center'>("+jd.notxtime +" sec)</td>" + "<td align='center'>("+jd.mode +")</td>" + "</tr>";
 };
 }
 xhr.open('GET','mlstatus',true); xhr.send();
@@ -184,7 +200,6 @@ xhr.open('GET','mlstatus',true); xhr.send();
 setInterval(showStatus, 5000);
 </script>
 </body>
-
 )";
 const char sta_update_html[] PROGMEM = R"(<head>
 <title>OpenSprinkler Firmware Update</title>

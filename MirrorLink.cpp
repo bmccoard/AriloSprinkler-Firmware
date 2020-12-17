@@ -269,11 +269,6 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
         // Payload format: 
         // bit 0 to 26 = Stayalive configured counter
         // bit 27 to 31 = cmd
-      case ML_APC:
-        // TODO:
-      case ML_CHANNEL:
-        // TODO:
-
         if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
           MirrorLink.bufferedCommands++;
           MirrorLink.buffer[MirrorLink.indexBufferHead] = (((uint32_t)(0x1F & (uint16_t)cmd) << 27) | payload);
@@ -480,7 +475,7 @@ String MirrorLinkStatus() {
   }
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += "],";
-    mirrorLinkInfo += "\"notxtime\":[";
+  mirrorLinkInfo += "\"notxtime\":[";
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
     if (MirrorLink.status.mirrorlinkState == MIRRORLINK_BUFFERING) {
@@ -494,6 +489,16 @@ String MirrorLinkStatus() {
       mirrorLinkInfo += "N.A.";
   }
   mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"mode\":[";
+  mirrorLinkInfo += "\"";
+  if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+    mirrorLinkInfo += "REMOTE";
+  }
+  else {
+    mirrorLinkInfo += "STATION";
+  }
+  mirrorLinkInfo += "\"";
 	mirrorLinkInfo += "]}";
 	return mirrorLinkInfo;
 }
@@ -504,7 +509,7 @@ void MirrorLinkInit(void) {
   MirrorLink.status.mirrorLinkStationType = (uint32_t)(os.iopts[IOPT_ML_STATIONTYPE]);
 
   // TODO: Remove!
-  MirrorLink.status.mirrorLinkStationType = ML_STATION; //ML_REMOTE; //ML_STATION;
+  MirrorLink.status.mirrorLinkStationType = ML_REMOTE; //ML_REMOTE; //ML_STATION;
 
   MirrorLink.status.networkId = (uint32_t)(os.iopts[IOPT_ML_NETWORKID]);
   MirrorLink.status.receivedFlag = (uint32_t)false;
@@ -1420,14 +1425,6 @@ void MirrorLinkState(void) {
                 payload = MirrorLinkGetCmd((uint8_t)ML_STAYALIVE);
                 MirrorLink.status.stayAlive = (uint8_t)((payload >> 26) & 0x01);
                 MirrorLink.stayAliveMaxPeriod = (time_t)(payload & 0x3FFFFFF);
-                MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                break;
-              case ML_APC:
-                // TODO:
-                MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                break;
-              case ML_CHANNEL:
-                // TODO:
                 MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
                 break;
             }

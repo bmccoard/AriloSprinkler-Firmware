@@ -77,8 +77,6 @@ enum {
   ML_SUNSET,                  // Command to configure the sunset time in the remote station
   ML_RAINDELAYSTOPTIME,       // Command to configure the rain delay stop time
   ML_STAYALIVE,               // Command sent regularily, needed for the remote station to not shutdown all outputs
-  ML_APC,                     // Command for Adaptative Power Control (regulate remote station transmission power)
-  ML_CHANNEL,                 // Command for channel selection
   ML_MAX_CMD                  // total number of commands
 };
 
