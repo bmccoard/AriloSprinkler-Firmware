@@ -46,10 +46,10 @@
 #define ROL(x, r)                           ((x << r) | (x >> ((sizeof(SPECK_TYPE) * 8) - r)))
 #define R(x, y, k)                          (x = ROR(x, 8), x += y, x ^= k, y = ROL(y, 3), y ^= x)
 #define RR(x, y, k)                         (y ^= x, y = ROR(y, 3), x ^= k, x -= y, x = ROL(x, 8))
-#define SPECK_DEFAULT_KEY_N1                0x03020100    
-#define SPECK_DEFAULT_KEY_N2                0x0b0a0908
-#define SPECK_DEFAULT_KEY_N3                0x13121110
-#define SPECK_DEFAULT_KEY_N4                0x1b1a1918
+#define SPECK_DEFAULT_KEY_N1                0x03020100 // 50462976
+#define SPECK_DEFAULT_KEY_N2                0x0b0a0908 // 185207048
+#define SPECK_DEFAULT_KEY_N3                0x13121110 // 319951120
+#define SPECK_DEFAULT_KEY_N4                0x1b1a1918 // 454695192
 
 // Enum for station types
 enum {
@@ -132,9 +132,17 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
 void MirrorLinkPeriodicCommands();
 uint32_t MirrorLinkGetCmd(uint8_t cmd);
 uint8_t MirrorLinkGetStationType(void);
+bool MirrorLinkSetNetworkId(uint8_t networkid);
+bool MirrorLinkSetStationType(uint8_t type);
+bool MirrorLinkSetKeys(uint32_t ask1, uint32_t ask2, uint32_t ask3, uint32_t ask4);
+bool MirrorLinkSetChannel(uint8_t channel);
+bool MirrorLinkSetPowerLevel(uint8_t powlevel);
+bool MirrorLinkSetDutyCycle(float dutycycle);
 void MirrorLinkInit();
 void MirrorLinkMain();
-String MirrorLinkStatus();
+String MirrorLinkStatusGeneral();
+String MirrorLinkStatusRadio();
+String MirrorLinkStatusPackets();
 
 #endif // defined(ESP32) && defined(MIRRORLINK_ENABLE)
 

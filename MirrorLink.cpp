@@ -189,6 +189,123 @@ uint8_t MirrorLinkGetStationType(void) {
   return ((uint8_t)MirrorLink.status.mirrorLinkStationType);
 }
 
+bool MirrorLinkSetNetworkId(uint8_t networkid) {
+  bool accepted = false;
+  if ((networkid <= UINT8_MAX) && (networkid >= 0)) {
+    MirrorLink.status.networkId = networkid;
+    os.iopts[IOPT_ML_NETWORKID] = networkid;
+    accepted = true;
+    Serial.println(F("Saving options"));
+    os.iopts_save();
+    Serial.println(F("Reseting MirrorLink"));
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
+bool MirrorLinkSetStationType(uint8_t type) {
+  bool accepted = false;
+  if (type == 1) {
+    MirrorLink.status.mirrorLinkStationType = ML_REMOTE;
+    os.iopts[IOPT_ML_STATIONTYPE] = ML_REMOTE;
+    accepted = true;
+    os.iopts_save();
+  }
+  else if (type == 0) {
+    MirrorLink.status.mirrorLinkStationType = ML_STATION;
+    os.iopts[IOPT_ML_STATIONTYPE] = ML_STATION;
+    accepted = true;
+    os.iopts_save();
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
+bool MirrorLinkSetKeys(uint32_t ask1, uint32_t ask2, uint32_t ask3, uint32_t ask4) {
+  bool accepted = false;
+  if (  ((ask1 <= UINT32_MAX) && (ask1 >= 0))
+      &&((ask2 <= UINT32_MAX) && (ask2 >= 0))
+      &&((ask3 <= UINT32_MAX) && (ask3 >= 0))
+      &&((ask4 <= UINT32_MAX) && (ask4 >= 0)) ) {
+    MirrorLink.key[0] = ask1;
+    MirrorLink.key[1] = ask2;
+    MirrorLink.key[2] = ask2;
+    MirrorLink.key[3] = ask3;
+    os.iopts[IOPT_ML_ASSOC_KEY1BYTE] = ((ask1 >> 24) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY2BYTE] = ((ask1 >> 16) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY3BYTE] = ((ask1 >> 8) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY4BYTE] = (ask1 & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY5BYTE] = ((ask2 >> 24) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY6BYTE] = ((ask2 >> 16) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY7BYTE] = ((ask2 >> 8) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY8BYTE] = (ask2 & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY9BYTE] = ((ask3 >> 24) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY10BYTE] = ((ask3 >> 16) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY11BYTE] = ((ask3 >> 8) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY12BYTE] = (ask3 & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY13BYTE] = ((ask4 >> 24) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY14BYTE] = ((ask4 >> 16) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY15BYTE] = ((ask4 >> 8) & 0xFF);
+    os.iopts[IOPT_ML_ASSOC_KEY16BYTE] = (ask4 & 0xFF);
+    os.iopts_save();
+    speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
+    accepted = true;
+    }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
+bool MirrorLinkSetChannel(uint8_t channel) {
+  bool accepted = false;
+  if ((channel <= 15) && (channel >= 0)) {
+    MirrorLink.status.channelNumber = channel;
+    os.iopts[IOPT_ML_RADIOCTR] &= 0xF0;
+    os.iopts[IOPT_ML_RADIOCTR] |= channel;
+    accepted = true;
+    os.iopts_save();
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
+bool MirrorLinkSetPowerLevel(uint8_t powlevel) {
+  bool accepted = false;
+  if ((powlevel <= 15) && (powlevel >= 0)) {
+    MirrorLink.status.powerLevel = powlevel;
+    os.iopts[IOPT_ML_RADIOCTR] &= 0x0F;
+    os.iopts[IOPT_ML_RADIOCTR] |= (powlevel << 4);
+    accepted = true;
+    os.iopts_save();
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
+bool MirrorLinkSetDutyCycle(float dutycycle) {
+  bool accepted = false;
+  if ((dutycycle <= 100) && (dutycycle >= 0)) {
+    MirrorLink.dutyCycle = uint16_t(dutycycle * 10);
+    os.iopts[IOPT_ML_DUTYCYCLE1] = ((MirrorLink.dutyCycle >> 8) & 0xFF);
+    os.iopts[IOPT_ML_DUTYCYCLE2] = (MirrorLink.dutyCycle & 0xFF);
+    accepted = true;
+    os.iopts_save();
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
   if (MirrorLink.status.mirrorlinkState != MIRRORLINK_ASSOCIATE) {
     switch (cmd) {
@@ -353,13 +470,40 @@ void MirrorLinkPeriodicCommands(void) {
   }
 }
 
-// Status MirrorLink for wifi server
-String MirrorLinkStatus() {
+// General Status MirrorLink for wifi server
+String MirrorLinkStatusGeneral() {
+	String mirrorLinkInfo;
+	// Encode in JSON message
+  mirrorLinkInfo = "{\"mode\":["; 
+  mirrorLinkInfo += "\"";
+  if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+    mirrorLinkInfo += "REMOTE";
+  }
+  else {
+    mirrorLinkInfo += "STATION";
+  }
+  mirrorLinkInfo += "\"";
+	mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"networkid\":["; 
+	mirrorLinkInfo += "\"";
+	mirrorLinkInfo += String(MirrorLink.status.networkId);
+	mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "]}";
+	return mirrorLinkInfo;
+}
+
+// Radio Status MirrorLink for wifi server
+String MirrorLinkStatusRadio() {
 	String mirrorLinkInfo;
 	// Encode in JSON message
 	mirrorLinkInfo = "{\"frequency\":["; 
 	mirrorLinkInfo += "\"";
 	mirrorLinkInfo += String(MirrorLink.frequency);
+	mirrorLinkInfo += "\"";
+	mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"dutycycle\":["; 
+	mirrorLinkInfo += "\"";
+	mirrorLinkInfo += String((MirrorLink.dutyCycle) / 10);
 	mirrorLinkInfo += "\"";
 	mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"rssis\":[";
@@ -410,16 +554,6 @@ String MirrorLinkStatus() {
   }
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += "],";
-  mirrorLinkInfo += "\"linkst\":[";
-  mirrorLinkInfo += "\"";
-  if (MirrorLink.status.link == ML_LINK_UP) {
-    mirrorLinkInfo += "UP";
-  }
-  else {
-    mirrorLinkInfo += "DOWN";
-  }
-  mirrorLinkInfo += "\"";
-  mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"assocst\":[";
   mirrorLinkInfo += "\"";
   switch (MirrorLink.status.comStatus) {
@@ -439,8 +573,15 @@ String MirrorLinkStatus() {
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += String(MirrorLink.associationAttempts);
   mirrorLinkInfo += "\"";
-  mirrorLinkInfo += "],";
-  mirrorLinkInfo += "\"buffpackets\":[";
+  mirrorLinkInfo += "]}";
+	return mirrorLinkInfo;
+}
+
+// Packets Status MirrorLink for wifi server
+String MirrorLinkStatusPackets() {
+	String mirrorLinkInfo;
+	// Encode in JSON message
+  mirrorLinkInfo = "{\"buffpackets\":["; 
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
     mirrorLinkInfo += String(MirrorLink.bufferedCommands);
@@ -489,17 +630,7 @@ String MirrorLinkStatus() {
       mirrorLinkInfo += "N.A.";
   }
   mirrorLinkInfo += "\"";
-  mirrorLinkInfo += "],";
-  mirrorLinkInfo += "\"mode\":[";
-  mirrorLinkInfo += "\"";
-  if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-    mirrorLinkInfo += "REMOTE";
-  }
-  else {
-    mirrorLinkInfo += "STATION";
-  }
-  mirrorLinkInfo += "\"";
-	mirrorLinkInfo += "]}";
+  mirrorLinkInfo += "]}";
 	return mirrorLinkInfo;
 }
 
@@ -507,10 +638,6 @@ String MirrorLinkStatus() {
 void MirrorLinkInit(void) {
   MirrorLink.moduleState = ERR_NONE;
   MirrorLink.status.mirrorLinkStationType = (uint32_t)(os.iopts[IOPT_ML_STATIONTYPE]);
-
-  // TODO: Remove!
-  MirrorLink.status.mirrorLinkStationType = ML_REMOTE; //ML_REMOTE; //ML_STATION;
-
   MirrorLink.status.networkId = (uint32_t)(os.iopts[IOPT_ML_NETWORKID]);
   MirrorLink.status.receivedFlag = (uint32_t)false;
   MirrorLink.status.transmittedFlag = (uint32_t)false;

@@ -134,13 +134,22 @@ const char mirrorlink_control_html[] PROGMEM = R"(<head>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
 </head>
 <body style='background-color: rgba(195, 247, 208, 0.473)'>
-<h1 style='color:white;background-color:black;width:500px;text-align:center'>AriloSprinkler MirrorLink Control Panel</h1>
+<h1 style='color:white;background-color:black;width:650px;text-align:center'>AriloSprinkler MirrorLink Control Panel</h1>
+<style> table, th, td { border: 0px solid black; border-collapse: collapse; padding: 5px;}
+table#mlsg th { border: 3px solid black;}
+table#mlsg td { border: 3px solid black; border-collapse: collapse;}</style>
+<caption><b style='color:black'>General Status</caption><br><br>
+<table cellspacing=4 id='mlsg'>
+<tr><td>Mode&nbsp&nbsp</td><td>NetworkID&nbsp&nbsp</td></tr>
+<tr><td>(Waiting...)</td></tr>
+</table>
+<br><br>
 <style> table, th, td { border: 0px solid black; border-collapse: collapse; padding: 5px;}
 table#mlsr th { border: 3px solid black;}
 table#mlsr td { border: 3px solid black; border-collapse: collapse;}</style>
 <caption><b style='color:black'>Radio Status</caption><br><br>
 <table cellspacing=4 id='mlsr'>
-<tr><td>Frequency&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Link Status&nbsp&nbsp</td><td>Association Status&nbsp&nbsp</td><td>Association Attempts&nbsp&nbsp</td></tr>
+<tr><td>Frequency&nbsp&nbsp</td><td>DutyCycle&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Association Status&nbsp&nbsp</td><td>Association Attempts&nbsp&nbsp</td></tr>
 <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
@@ -149,17 +158,19 @@ table#mlsp th { border: 3px solid black;}
 table#mlsp td { border: 3px solid black; border-collapse: collapse;}</style>
 <caption><b style='color:black'>Packet Status</caption><br><br>
 <table cellspacing=4 id='mlsp'>
-<tr><td>Buffered Packets&nbsp&nbsp</td><td>Packets Sent&nbsp&nbsp</td><td>Packets Received&nbsp&nbsp</td><td>Encryption&nbsp&nbsp</td><td>Packet Sent Time&nbsp&nbsp</td><td>No TX Time&nbsp&nbsp</td><td>Mode&nbsp&nbsp</td>
+<tr><td>Buffered Packets&nbsp&nbsp</td><td>Packets Sent&nbsp&nbsp</td><td>Packets Received&nbsp&nbsp</td><td>Encryption&nbsp&nbsp</td><td>Packet Sent Time&nbsp&nbsp</td><td>No TX Time&nbsp&nbsp</td>
 <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
 <table cellspacing=16>
+<tr><td><input type='number' name='netid' id='netid' min='0' max='255' style='font-size:12pt;height:28px;width:120px;'></td><td>Network ID (0 to 255)</td></tr>
 <tr><td><input type='number' name='mlpass1' id='mlpass1' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px;'></td><td>Association Key 1 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlpass2' id='mlpass2' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 2 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlpass3' id='mlpass3' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 3 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlpass4' id='mlpass4' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 4 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlchan' id='mlchan' min='0' max='15' style='font-size:14pt;height:28px;'></td><td>Channel (0 to 15)</td></tr>
 <tr><td><input type='number' name='mlplim' id='mlplim' min='0' max='30' style='font-size:14pt;height:28px;'></td><td>Power Limit (0 to 30dBm)</td></tr>
+<tr><td><input type='number' name='dtcycl' id='dtcycl' min='0.0' max='100.0' step='0.1' style='font-size:14pt;height:28px;'></td><td>Duty Cycle (0.0 to 100.0)</td></tr>
 <tr><td><input type='checkbox' name='mlrem' id='mlrem' value='1' style='font-size:14pt;height:28px;'></td><td>Remote Mode</td></tr>
 <tr><td colspan=2><p id='msg'></p></td></tr>
 <tr><td><button type='button' id='butt' onclick='mlc();' style='height:36px;width:130px'>Submit</button></td><td></td></tr>
@@ -178,26 +189,48 @@ id('msg').innerHTML='<b><font color=red>Error code: '+jd.result+', item: '+jd.it
 };
 var check = 0;
 if (id('mlrem').checked == true) { check = 1; }
-var comm='mlchconfig?mlpass1='+encodeURIComponent(id('mlpass1').value)+'&mlpass2='+encodeURIComponent(id('mlpass2').value)+'&mlpass3='+encodeURIComponent(id('mlpass3').value)+'&mlpass4='+encodeURIComponent(id('mlpass4').value)+'&mlchan='+encodeURIComponent(id('mlchan').value)+'&mlplim='+encodeURIComponent(id('mlplim').value)+'&mlrem='+check;
+var comm='mlchconfig?netid='+encodeURIComponent(id('netid').value)+'&mlpass1='+encodeURIComponent(id('mlpass1').value)+'&mlpass2='+encodeURIComponent(id('mlpass2').value)+'&mlpass3='+encodeURIComponent(id('mlpass3').value)+'&mlpass4='+encodeURIComponent(id('mlpass4').value)+'&mlchan='+encodeURIComponent(id('mlchan').value)+'&mlplim='+encodeURIComponent(id('mlplim').value)+'&dtcycl='+encodeURIComponent(id('dtcycl').value)+'&mlrem='+check;
 xhr.open('GET', comm, true); xhr.send();
 }
-function showStatus() {
+function showStatusGeneral() {
+var xhr=new XMLHttpRequest();
+xhr.onreadystatechange=function() {
+if(xhr.readyState==4 && xhr.status==200) {
+id('mlsg').deleteRow(1);
+var jd=JSON.parse(xhr.responseText);
+var row=id('mlsg').insertRow(-1);
+row.innerHTML ="<tr><td align='center'>("+jd.mode +")</td>" + "<td align='center'>("+jd.networkid+")</td>" + "</tr>";
+};
+}
+xhr.open('GET','mlstatusgeneral',true); xhr.send();
+}
+setInterval(showStatusGeneral, 5000);
+function showStatusRadio() {
 var xhr=new XMLHttpRequest();
 xhr.onreadystatechange=function() {
 if(xhr.readyState==4 && xhr.status==200) {
 id('mlsr').deleteRow(1);
 var jd=JSON.parse(xhr.responseText);
 var row=id('mlsr').insertRow(-1);
-row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>"  + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.linkst +")</td>" + "<td align='center'>("+jd.assocst +")</td>" + "<td align='center'>("+jd.assocatm +")</td>" + "</tr>";
+row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>" + "<td align='center'>("+jd.dutycycle+"%)</td>" + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.assocst +")</td>" + "<td align='center'>("+jd.assocatm +")</td>" + "</tr>";
+};
+}
+xhr.open('GET','mlstatusradio',true); xhr.send();
+}
+setInterval(showStatusRadio, 5000);
+function showStatusPackets() {
+var xhr=new XMLHttpRequest();
+xhr.onreadystatechange=function() {
+if(xhr.readyState==4 && xhr.status==200) {
 id('mlsp').deleteRow(1);
 jd=JSON.parse(xhr.responseText);
 row=id('mlsp').insertRow(-1);
-row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>"  + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx +")</td>" + "<td align='center'>("+jd.encryption +")</td>" + "<td align='center'>("+jd.packettime +" msec)</td>" + "<td align='center'>("+jd.notxtime +" sec)</td>" + "<td align='center'>("+jd.mode +")</td>" + "</tr>";
+row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>"  + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx +")</td>" + "<td align='center'>("+jd.encryption +")</td>" + "<td align='center'>("+jd.packettime +" msec)</td>" + "<td align='center'>("+jd.notxtime +" sec)</td>" + "</tr>";
 };
 }
-xhr.open('GET','mlstatus',true); xhr.send();
+xhr.open('GET','mlstatuspackets',true); xhr.send();
 }
-setInterval(showStatus, 5000);
+setInterval(showStatusPackets, 5000);
 </script>
 </body>
 )";

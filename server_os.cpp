@@ -464,44 +464,75 @@ void ml_sta_ap_control() {
 	server_send_html(html);
 }
 
-void ml_sta_ap_status() {
-	String html = MirrorLinkStatus();
+void ml_sta_ap_status_general() {
+	String html = MirrorLinkStatusGeneral();
+	server_send_html(html);
+}
+
+void ml_sta_ap_status_radio() {
+	String html = MirrorLinkStatusRadio();
+	server_send_html(html);
+}
+
+void ml_sta_ap_status_packets() {
+	String html = MirrorLinkStatusPackets();
 	server_send_html(html);
 }
 
 void ml_sta_ap_chconfig() {
-	uint32_t mlPass1,mlPass2,mlPass3,mlPass4,mlChannel,mlPlim;
+	uint32_t mlPass1, mlPass2, mlPass3, mlPass4;
+	float mlDutyCycle;
+	uint8_t mlNetId, mlChannel, mlPlim;
 	bool mlRemoteMode;
-	Serial.println(F("Entering ml_sta_ap_chconfig"));
-	if(   (wifi_server->hasArg("mlpass1")&&wifi_server->arg("mlpass1").length()!=0)
+	uint8_t oks = 0;
+	Serial.println(F("ml_sta_ap_chconfig"));
+	Serial.println(wifi_server->arg("netid").c_str());
+	Serial.println(wifi_server->arg("mlpass1").c_str());
+	Serial.println(wifi_server->arg("mlpass2").c_str());
+	Serial.println(wifi_server->arg("mlpass3").c_str());
+	Serial.println(wifi_server->arg("mlpass4").c_str());
+	Serial.println(wifi_server->arg("mlchan").c_str());
+	Serial.println(wifi_server->arg("mlplim").c_str());
+	Serial.println(wifi_server->arg("dtcycl").c_str());
+	Serial.println(wifi_server->arg("mlrem").c_str());
+	if(   (wifi_server->hasArg("netid")&&wifi_server->arg("netid").length()!=0)
+		&&(wifi_server->hasArg("mlpass1")&&wifi_server->arg("mlpass1").length()!=0)
 		&&(wifi_server->hasArg("mlpass2")&&wifi_server->arg("mlpass2").length()!=0)
 		&&(wifi_server->hasArg("mlpass3")&&wifi_server->arg("mlpass3").length()!=0)
 		&&(wifi_server->hasArg("mlpass4")&&wifi_server->arg("mlpass4").length()!=0)
 		&&(wifi_server->hasArg("mlchan")&&wifi_server->arg("mlchan").length()!=0)
 		&&(wifi_server->hasArg("mlplim")&&wifi_server->arg("mlplim").length()!=0)
+		&&(wifi_server->hasArg("dtcycl")&&wifi_server->arg("dtcycl").length()!=0)
 		&&(wifi_server->hasArg("mlrem")&&wifi_server->arg("mlrem").length()!=0)) {
+		mlNetId = strtoul(wifi_server->arg("netid").c_str(), NULL, 0);
 		mlPass1 = strtoul(wifi_server->arg("mlpass1").c_str(), NULL, 0);
 		mlPass2 = strtoul(wifi_server->arg("mlpass2").c_str(), NULL, 0);
 		mlPass3 = strtoul(wifi_server->arg("mlpass3").c_str(), NULL, 0);
 		mlPass4 = strtoul(wifi_server->arg("mlpass4").c_str(), NULL, 0);
 		mlChannel = strtoul(wifi_server->arg("mlchan").c_str(), NULL, 0);
 		mlPlim = strtoul(wifi_server->arg("mlplim").c_str(), NULL, 0);
+		mlDutyCycle = wifi_server->arg("dtcycl").toFloat();
 		mlRemoteMode = (bool)strtoul(wifi_server->arg("mlrem").c_str(), NULL, 0);
-		Serial.print(F("mlPass1: "));
-		Serial.println(mlPass1);
-		Serial.print(F("mlPass2: "));
-		Serial.println(mlPass2);
-		Serial.print(F("mlPass3: "));
-		Serial.println(mlPass3);
-		Serial.print(F("mlPass4: "));
-		Serial.println(mlPass4);
-		Serial.print(F("mlChannel: "));
-		Serial.println(mlChannel);
-		Serial.print(F("mlPlim: "));
-		Serial.println(mlPlim);
-		Serial.print(F("mlRem: "));
-		Serial.println(mlRemoteMode);
-		server_send_result(HTML_SUCCESS);
+		Serial.println(F("Starting checks: "));
+		if ((uint8_t)MirrorLinkSetNetworkId(mlNetId)) oks++;
+		Serial.println(F("NetworkId set"));
+		if (MirrorLinkSetKeys(mlPass1, mlPass2, mlPass3, mlPass4)) oks++;
+		Serial.println(F("Keys set"));
+		if (MirrorLinkSetChannel(mlChannel)) oks++;
+		Serial.println(F("Channel set"));
+		if (MirrorLinkSetPowerLevel(mlPlim)) oks++;
+		Serial.println(F("Power Limit set"));
+		if (MirrorLinkSetStationType(mlRemoteMode)) oks++;
+		Serial.println(F("Mode set"));
+		if (MirrorLinkSetDutyCycle(mlDutyCycle)) oks++;
+		Serial.println(F("Duty Cycle set"));
+		Serial.println(oks);
+		if (oks == 6) {
+			server_send_result(HTML_SUCCESS);
+		}
+		else {
+			server_send_result(HTML_DATA_MISSING, "Incorrect input data");
+		}
 	}
 	else {
 		server_send_result(HTML_DATA_MISSING, "Incorrect input data");
@@ -2243,7 +2274,9 @@ void start_server_client() {
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	wifi_server->on("/mlcontrol", ml_sta_ap_control);
-	wifi_server->on("/mlstatus", ml_sta_ap_status);
+	wifi_server->on("/mlstatusgeneral", ml_sta_ap_status_general);
+	wifi_server->on("/mlstatusradio", ml_sta_ap_status_radio);
+	wifi_server->on("/mlstatuspackets", ml_sta_ap_status_packets);
 	wifi_server->on("/mlchconfig", ml_sta_ap_chconfig);
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
@@ -2276,7 +2309,9 @@ void start_server_ap() {
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	wifi_server->on("/mlcontrol", ml_sta_ap_control);
-	wifi_server->on("/mlstatus", ml_sta_ap_status);
+	wifi_server->on("/mlstatusgeneral", ml_sta_ap_status_general);
+	wifi_server->on("/mlstatusradio", ml_sta_ap_status_radio);
+	wifi_server->on("/mlstatuspackets", ml_sta_ap_status_packets);
 	wifi_server->on("/mlchconfig", ml_sta_ap_chconfig);
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
