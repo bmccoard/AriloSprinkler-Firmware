@@ -195,7 +195,7 @@ bool MirrorLinkSetNetworkId(uint8_t networkid) {
     MirrorLink.status.networkId = networkid;
     os.iopts[IOPT_ML_NETWORKID] = networkid;
     accepted = true;
-    Serial.println(F("Saving options NetworkID"));
+    MLDEBUG_PRINTLN(F("Saving options NetworkID"));
     os.iopts_save();
   }
   else {
@@ -210,14 +210,14 @@ bool MirrorLinkSetStationType(uint8_t type) {
     MirrorLink.status.mirrorLinkStationType = ML_REMOTE;
     os.iopts[IOPT_ML_STATIONTYPE] = ML_REMOTE;
     accepted = true;
-    Serial.println(F("Saving options Station Type"));
+    MLDEBUG_PRINTLN(F("Saving options Station Type"));
     os.iopts_save();
   }
   else if (type == 0) {
     MirrorLink.status.mirrorLinkStationType = ML_STATION;
     os.iopts[IOPT_ML_STATIONTYPE] = ML_STATION;
     accepted = true;
-    Serial.println(F("Saving options Station Type"));
+    MLDEBUG_PRINTLN(F("Saving options Station Type"));
     os.iopts_save();
   }
   else {
@@ -252,7 +252,7 @@ bool MirrorLinkSetKeys(uint32_t ask1, uint32_t ask2, uint32_t ask3, uint32_t ask
     os.iopts[IOPT_ML_ASSOC_KEY14BYTE] = ((ask4 >> 16) & 0xFF);
     os.iopts[IOPT_ML_ASSOC_KEY15BYTE] = ((ask4 >> 8) & 0xFF);
     os.iopts[IOPT_ML_ASSOC_KEY16BYTE] = (ask4 & 0xFF);
-    Serial.println(F("Saving options Keys"));
+    MLDEBUG_PRINTLN(F("Saving options Keys"));
     os.iopts_save();
     speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
     accepted = true;
@@ -270,7 +270,7 @@ bool MirrorLinkSetChannel(uint8_t channel) {
     os.iopts[IOPT_ML_RADIOCTR] &= 0xF0;
     os.iopts[IOPT_ML_RADIOCTR] |= channel;
     accepted = true;
-    Serial.println(F("Saving options Channel"));
+    MLDEBUG_PRINTLN(F("Saving options Channel"));
     os.iopts_save();
   }
   else {
@@ -286,7 +286,7 @@ bool MirrorLinkSetPowerLevel(uint8_t powlevel) {
     os.iopts[IOPT_ML_RADIOCTR] &= 0x0F;
     os.iopts[IOPT_ML_RADIOCTR] |= (powlevel << 4);
     accepted = true;
-    Serial.println(F("Saving options Power"));
+    MLDEBUG_PRINTLN(F("Saving options Power"));
     os.iopts_save();
   }
   else {
@@ -302,7 +302,7 @@ bool MirrorLinkSetDutyCycle(float dutycycle) {
     os.iopts[IOPT_ML_DUTYCYCLE1] = ((MirrorLink.dutyCycle >> 8) & 0xFF);
     os.iopts[IOPT_ML_DUTYCYCLE2] = (MirrorLink.dutyCycle & 0xFF);
     accepted = true;
-    Serial.println(F("Saving options DutyCycle"));
+    MLDEBUG_PRINTLN(F("Saving options DutyCycle"));
     os.iopts_save();
   }
   else {
@@ -692,7 +692,7 @@ void MirrorLinkInit(void) {
   sprintf_P(mirrorlinkProg.name, "%d", 0);
   MirrorLink.packetExchCtr = 0;
 
-	Serial.begin(115200);
+	MLDEBUG_BEGIN(115200);
 
 	// Configure LORA module pins
 	pinMode(LORA_SCLK, OUTPUT); // SCLK
@@ -707,7 +707,7 @@ void MirrorLinkInit(void) {
 
 	// SCLK GPIO 5, MISO GPIO 19, MOSI GPIO 27, CS == NSS GPIO 18
 	SPI.begin(LORA_SCLK, LORA_MISO, LORA_MOSI, LORA_NSS);
-	Serial.print(F("[SX1262] Initializing ... "));
+	MLDEBUG_PRINT(F("[SX1262] Initializing ... "));
 	// initialize SX1262 
 	// carrier frequency:           868.0 MHz
 	// bandwidth:                   125.0 kHz
@@ -720,16 +720,16 @@ void MirrorLinkInit(void) {
 	// CRC:                         enabled
 	MirrorLink.moduleState = lora.begin(MirrorLink.frequency, 125.0, 12, 5, SX126X_SYNC_WORD_PRIVATE, 16 , 8, (float)(1.8), true);
 	if (MirrorLink.moduleState == ERR_NONE) {
-    Serial.println(F("success!"));
+    MLDEBUG_PRINTLN(F("success!"));
 	} else {
-		Serial.print(F("failed, code "));
-		Serial.println(MirrorLink.moduleState);
+		MLDEBUG_PRINT(F("failed, code "));
+		MLDEBUG_PRINTLN(MirrorLink.moduleState);
 	}
 
   // Current limitation
   MirrorLink.moduleState = lora.setCurrentLimit(120.0);
 	if (MirrorLink.moduleState == ERR_INVALID_CURRENT_LIMIT) {
-    Serial.println(F("Current limit configure exceedes max.!"));
+    MLDEBUG_PRINTLN(F("Current limit configure exceedes max.!"));
 	}
 
 #if defined(MIRRORLINK_MODRADIOLIB)
@@ -738,7 +738,7 @@ void MirrorLinkInit(void) {
   uint8_t modData[1] = { 0x96 };
   MirrorLink.moduleState = lora.writeRegister(modReg, modData, 1); // max LNA gain, increase current by ~2mA for around ~3dB in sensivity
 	if (MirrorLink.moduleState != ERR_NONE) {
-    Serial.println(F("LNA max gain not set successfully!"));
+    MLDEBUG_PRINTLN(F("LNA max gain not set successfully!"));
 	}
 #endif //defined(MIRRORLINK_MODRADIOLIB)
 
@@ -757,7 +757,7 @@ bool MirrorLinkTransmitStatus(void) {
 
     if (MirrorLink.moduleState == ERR_NONE) {
       // packet was successfully sent
-      Serial.println(F("transmission finished!"));
+      MLDEBUG_PRINTLN(F("transmission finished!"));
 
       // NOTE: when using interrupt-driven transmit method,
       //       it is not possible to automatically measure
@@ -772,8 +772,8 @@ bool MirrorLinkTransmitStatus(void) {
       MirrorLink.packetsSent++;
     } 
     else {
-      Serial.print(F("failed, code "));
-      Serial.println(MirrorLink.moduleState);
+      MLDEBUG_PRINT(F("failed, code "));
+      MLDEBUG_PRINTLN(MirrorLink.moduleState);
     }
     MirrorLink.status.enableInterrupt = (uint16_t)true;
   }
@@ -783,7 +783,7 @@ bool MirrorLinkTransmitStatus(void) {
 void MirrorLinkTransmit(void) {
 	// Important! To enable transmit you need to switch the SX126x antenna switch to TRANSMIT
 	enableTX();
-  Serial.println(F("[SX1262] Starting to transmit ... "));
+  MLDEBUG_PRINTLN(F("[SX1262] Starting to transmit ... "));
   SPECK_TYPE plain[2] = {0, 0};
   SPECK_TYPE buffer[2] = {0, 0};
 
@@ -792,7 +792,7 @@ void MirrorLinkTransmit(void) {
     // If not associated
     // Reset to default key
     if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION) {
-      Serial.println(F("Resetting to default key"));
+      MLDEBUG_PRINTLN(F("Resetting to default key"));
       MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
       MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
       MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
@@ -872,7 +872,7 @@ void MirrorLinkTransmit(void) {
     // For station, if not associated or change key process, update key and com. to normal
     if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION)
         || (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
-      Serial.println(F("Changing key"));
+      MLDEBUG_PRINTLN(F("Changing key"));
       MirrorLink.key[3] = MirrorLink.key[1];
       MirrorLink.key[2] = MirrorLink.key[0];
       MirrorLink.key[1] = MirrorLink.associationKey[1];
@@ -927,7 +927,7 @@ bool MirrorLinkReceiveStatus(void) {
               || (MirrorLink.status.comStatus == ML_LINK_COM_CHANGEKEY))) {
 
         // Update second part of the key and update decryption key
-        Serial.println(F("Changing key"));
+        MLDEBUG_PRINTLN(F("Changing key"));
 
         MirrorLink.associationKey[1] = buffer[1];
         MirrorLink.key[3] = MirrorLink.key[1];
@@ -961,7 +961,7 @@ bool MirrorLinkReceiveStatus(void) {
           // Diagnostics
           // If response command different than last command sent then report error
           if ((MirrorLink.response >> 27) != (MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27)) {
-            Serial.println(F("Station response does not match command sent!"));
+            MLDEBUG_PRINTLN(F("Station response does not match command sent!"));
           }
         }
         else {
@@ -969,41 +969,41 @@ bool MirrorLinkReceiveStatus(void) {
         }
       }
       // packet was successfully received
-      Serial.println(F("[SX1262] Received packet!"));
+      MLDEBUG_PRINTLN(F("[SX1262] Received packet!"));
 
       // print data of the packet
-      Serial.print(F("[SX1262] Data:\t\t"));
+      MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-        Serial.println(MirrorLink.response);
+        MLDEBUG_PRINTLN(MirrorLink.response);
       }
       else {
-        Serial.println(MirrorLink.command);
+        MLDEBUG_PRINTLN(MirrorLink.command);
       }
       float signal;
       // print RSSI (Received Signal Strength Indicator)
       signal = lora.getRSSI();
-      Serial.print(F("[SX1262] RSSI:\t\t"));
-      Serial.print(signal);
-      Serial.println(F(" dBm"));
+      MLDEBUG_PRINT(F("[SX1262] RSSI:\t\t"));
+      MLDEBUG_PRINT(signal);
+      MLDEBUG_PRINTLN(F(" dBm"));
       MirrorLink.rssiLocal = (int16_t)signal;
 
       signal = lora.getSNR();
       // print SNR (Signal-to-Noise Ratio)
-      Serial.print(F("[SX1262] SNR:\t\t"));
-      Serial.print(signal);
-      Serial.println(F(" dB"));
+      MLDEBUG_PRINT(F("[SX1262] SNR:\t\t"));
+      MLDEBUG_PRINT(signal);
+      MLDEBUG_PRINTLN(F(" dB"));
       MirrorLink.snrLocal = (uint16_t)(signal * 10);
       
       rxSuccessful = true;
     } 
     else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
-      Serial.println(F("CRC error!"));
+      MLDEBUG_PRINTLN(F("CRC error!"));
     }
     else if (MirrorLink.moduleState != ERR_NONE) {
       // some other error occurred
-      Serial.print(F("failed, code "));
-      Serial.println(MirrorLink.moduleState);
+      MLDEBUG_PRINT(F("failed, code "));
+      MLDEBUG_PRINTLN(MirrorLink.moduleState);
     }
     else {
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
@@ -1011,7 +1011,7 @@ bool MirrorLinkReceiveStatus(void) {
         MirrorLink.status.comStatus = ML_LINK_COM_ASSOCIATION;
       }
       else {
-        Serial.println(F("Resetting to default key"));
+        MLDEBUG_PRINTLN(F("Resetting to default key"));
         // Check if it is an association packet
         MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
         MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
@@ -1035,23 +1035,23 @@ bool MirrorLinkReceiveStatus(void) {
           float signal;
           // print RSSI (Received Signal Strength Indicator)
           signal = lora.getRSSI();
-          Serial.print(F("[SX1262] RSSI:\t\t"));
-          Serial.print(signal);
-          Serial.println(F(" dBm"));
+          MLDEBUG_PRINT(F("[SX1262] RSSI:\t\t"));
+          MLDEBUG_PRINT(signal);
+          MLDEBUG_PRINTLN(F(" dBm"));
           MirrorLink.rssiLocal = (int16_t)signal;
 
           signal = lora.getSNR();
           // print SNR (Signal-to-Noise Ratio)
-          Serial.print(F("[SX1262] SNR:\t\t"));
-          Serial.print(signal);
-          Serial.println(F(" dB"));
+          MLDEBUG_PRINT(F("[SX1262] SNR:\t\t"));
+          MLDEBUG_PRINT(signal);
+          MLDEBUG_PRINTLN(F(" dB"));
           MirrorLink.snrLocal = (uint16_t)(signal * 10);
           
           rxSuccessful = true;
         }
         else {
           // packet was received, but Network ID mismatch
-          Serial.println(F("Network ID mismatch!"));
+          MLDEBUG_PRINTLN(F("Network ID mismatch!"));
           // Change communication mode to association
           MirrorLink.status.comStatus = ML_LINK_COM_ASSOCIATION;
         }
@@ -1073,14 +1073,14 @@ void MirrorLinkReceiveInit(void) {
   enableRX();
 
   // start listening for LoRa packets
-  Serial.print(F("[SX1262] Starting to listen ... "));
+  MLDEBUG_PRINT(F("[SX1262] Starting to listen ... "));
   MirrorLink.moduleState = lora.startReceive();
   if (MirrorLink.moduleState == ERR_NONE) {
-    Serial.println(F("success!"));
+    MLDEBUG_PRINTLN(F("success!"));
     MirrorLink.status.flagRxTx = ML_RECEIVING;
   } else {
-    Serial.print(F("failed, code "));
-    Serial.println(MirrorLink.moduleState);
+    MLDEBUG_PRINT(F("failed, code "));
+    MLDEBUG_PRINTLN(MirrorLink.moduleState);
   }
 }
 
@@ -1115,27 +1115,27 @@ void MirrorLinkState(void) {
   switch (MirrorLink.status.mirrorlinkState) {
     // Initial state
     case MIRRORLINK_INIT:
-      Serial.println(F("STATE: MIRRORLINK_INIT"));
+      MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_INIT"));
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
-          Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
           MirrorLink.sendTimer = os.now_tz();
         }
         else {
-          Serial.println(F("STATE: MIRRORLINK_ASSOCIATE"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
           MirrorLink.sendTimer = os.now_tz();
         }
       }
       else {
         if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
-          Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLinkReceiveInit();
         }
         else {
-          Serial.println(F("STATE: MIRRORLINK_ASSOCIATE"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
           MirrorLink.sendTimer = 0;
           MirrorLinkReceiveInit();
@@ -1148,7 +1148,7 @@ void MirrorLinkState(void) {
         // Wait for associating answer
         if (   (MirrorLinkReceiveStatus() == true) 
             && (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) ) {
-          Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
@@ -1158,7 +1158,7 @@ void MirrorLinkState(void) {
       else {
         if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
           if (MirrorLinkTransmitStatus() == true) {
-            Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
+            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
             MirrorLinkReceiveInit();
           }
@@ -1172,7 +1172,7 @@ void MirrorLinkState(void) {
       // change state to send
       if (  (MirrorLink.sendTimer <= os.now_tz())
           &&(MirrorLink.bufferedCommands > 0)) {
-        Serial.println(F("STATE: MIRRORLINK_SEND"));
+        MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_SEND"));
         MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
         MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         MirrorLinkTransmit();
@@ -1185,15 +1185,15 @@ void MirrorLinkState(void) {
       // change state to receive
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         if (MirrorLinkTransmitStatus() == true) {
-          Serial.print(F("Transmission duration: "));
-          Serial.println(MirrorLink.txTime);
+          MLDEBUG_PRINT(F("Transmission duration: "));
+          MLDEBUG_PRINTLN(MirrorLink.txTime);
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLinkReceiveInit();
         }
         else if (MirrorLink.sendTimer <= os.now_tz()) {
-          Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
@@ -1204,7 +1204,7 @@ void MirrorLinkState(void) {
         if (   (MirrorLinkTransmitStatus() == true)
             || (MirrorLink.sendTimer <= os.now_tz())) {
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          Serial.println(F("STATE: MIRRORLINK_RECEIVE"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLinkReceiveInit();
         }
@@ -1226,7 +1226,7 @@ void MirrorLinkState(void) {
           // delete all programs and reset response
           if (((MirrorLink.response >> 23) & 0xF) == ML_SYNCERROR) {
             delete_program_data(-1);
-            Serial.println(F("Sync error with remote, reset program data!"));
+            MLDEBUG_PRINTLN(F("Sync error with remote, reset program data!"));
           }
 
           // Report command sent
@@ -1237,7 +1237,7 @@ void MirrorLinkState(void) {
           
           MirrorLink.response = 0;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          Serial.println(F("STATE: MIRRORLINK_BUFFERING"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
@@ -1251,7 +1251,7 @@ void MirrorLinkState(void) {
         if(MirrorLink.sendTimer <= os.now_tz()) {
 
           // Report error
-          Serial.println(F("No answer received from station!"));
+          MLDEBUG_PRINTLN(F("No answer received from station!"));
 
           // Command is lost, do not retry
           if (MirrorLink.bufferedCommands > 0) {
@@ -1261,7 +1261,7 @@ void MirrorLinkState(void) {
           
           MirrorLink.response = 0;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          Serial.println(F("STATE: MIRRORLINK_ASSOCIATE"));
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
@@ -1351,10 +1351,10 @@ void MirrorLinkState(void) {
                 // Request is to delete a program
                 else
                 {
-                  Serial.print(F("Remove program/s: "));
-                  Serial.println(pid);
-                  Serial.print(F("Number of programs: "));
-                  Serial.println(pd.nprograms);
+                  MLDEBUG_PRINT(F("Remove program/s: "));
+                  MLDEBUG_PRINTLN(pid);
+                  MLDEBUG_PRINT(F("Number of programs: "));
+                  MLDEBUG_PRINTLN(pd.nprograms);
                   // In case the new pid to be removed is not within the available pid's range
                   // SYNC issue identified, remove all programs
                   if (pid >= pd.nprograms) {
@@ -1527,13 +1527,13 @@ void MirrorLinkState(void) {
             }
           }
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          Serial.println(F("SATE: MIRRORLINK_SEND"));
+          MLDEBUG_PRINTLN(F("SATE: MIRRORLINK_SEND"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
           // Delay to allow the remote to turn to rx mode
           delay(100);
         }
         else if (MirrorLink.status.comStatus == ML_LINK_COM_ASSOCIATION) {
-          Serial.println(F("SATE: MIRRORLINK_ASSOCIATE"));
+          MLDEBUG_PRINTLN(F("SATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
           MirrorLink.sendTimer = 0;
           MirrorLinkReceiveInit();

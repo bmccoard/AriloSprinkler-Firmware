@@ -51,6 +51,26 @@
 #define SPECK_DEFAULT_KEY_N3                0x13121110 // 319951120
 #define SPECK_DEFAULT_KEY_N4                0x1b1a1918 // 454695192
 
+#define ENABLE_DEBUG_MIRRORLINK
+
+#if defined(ENABLE_DEBUG_MIRRORLINK) /** Serial debug functions */
+
+  #if defined(ARDUINO)
+    #define MLDEBUG_BEGIN(x)   {Serial.begin(x);}
+    #define MLDEBUG_PRINT(x)   {Serial.print(x);}
+    #define MLDEBUG_PRINTLN(x) {Serial.println(x);}
+    #define MLDEBUG_PRINTX(x)  {Serial.print(F("0x")); Serial.print(x, HEX); }
+  #endif
+
+#else
+
+  #define MLDEBUG_BEGIN(x)   {}
+  #define MLDEBUG_PRINT(x)   {}
+  #define MLDEBUG_PRINTLN(x) {}
+  #define MLDEBUG_PRINTX(x) {}
+
+#endif
+
 // Enum for station types
 enum {
   ML_STATION = 0,     // Type is station
