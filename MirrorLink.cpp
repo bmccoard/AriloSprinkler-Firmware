@@ -195,9 +195,8 @@ bool MirrorLinkSetNetworkId(uint8_t networkid) {
     MirrorLink.status.networkId = networkid;
     os.iopts[IOPT_ML_NETWORKID] = networkid;
     accepted = true;
-    Serial.println(F("Saving options"));
+    Serial.println(F("Saving options NetworkID"));
     os.iopts_save();
-    Serial.println(F("Reseting MirrorLink"));
   }
   else {
     accepted = false;
@@ -211,12 +210,14 @@ bool MirrorLinkSetStationType(uint8_t type) {
     MirrorLink.status.mirrorLinkStationType = ML_REMOTE;
     os.iopts[IOPT_ML_STATIONTYPE] = ML_REMOTE;
     accepted = true;
+    Serial.println(F("Saving options Station Type"));
     os.iopts_save();
   }
   else if (type == 0) {
     MirrorLink.status.mirrorLinkStationType = ML_STATION;
     os.iopts[IOPT_ML_STATIONTYPE] = ML_STATION;
     accepted = true;
+    Serial.println(F("Saving options Station Type"));
     os.iopts_save();
   }
   else {
@@ -251,6 +252,7 @@ bool MirrorLinkSetKeys(uint32_t ask1, uint32_t ask2, uint32_t ask3, uint32_t ask
     os.iopts[IOPT_ML_ASSOC_KEY14BYTE] = ((ask4 >> 16) & 0xFF);
     os.iopts[IOPT_ML_ASSOC_KEY15BYTE] = ((ask4 >> 8) & 0xFF);
     os.iopts[IOPT_ML_ASSOC_KEY16BYTE] = (ask4 & 0xFF);
+    Serial.println(F("Saving options Keys"));
     os.iopts_save();
     speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
     accepted = true;
@@ -268,6 +270,7 @@ bool MirrorLinkSetChannel(uint8_t channel) {
     os.iopts[IOPT_ML_RADIOCTR] &= 0xF0;
     os.iopts[IOPT_ML_RADIOCTR] |= channel;
     accepted = true;
+    Serial.println(F("Saving options Channel"));
     os.iopts_save();
   }
   else {
@@ -283,6 +286,7 @@ bool MirrorLinkSetPowerLevel(uint8_t powlevel) {
     os.iopts[IOPT_ML_RADIOCTR] &= 0x0F;
     os.iopts[IOPT_ML_RADIOCTR] |= (powlevel << 4);
     accepted = true;
+    Serial.println(F("Saving options Power"));
     os.iopts_save();
   }
   else {
@@ -298,6 +302,7 @@ bool MirrorLinkSetDutyCycle(float dutycycle) {
     os.iopts[IOPT_ML_DUTYCYCLE1] = ((MirrorLink.dutyCycle >> 8) & 0xFF);
     os.iopts[IOPT_ML_DUTYCYCLE2] = (MirrorLink.dutyCycle & 0xFF);
     accepted = true;
+    Serial.println(F("Saving options DutyCycle"));
     os.iopts_save();
   }
   else {

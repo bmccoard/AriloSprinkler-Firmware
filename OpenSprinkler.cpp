@@ -468,7 +468,7 @@ byte OpenSprinkler::iopts[] = {
 	255,// subnet mask 3
 	0,
 	WIFI_M_AP, // wifi mode
-	#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	0, // reset
 	3,
 	2,
@@ -1099,11 +1099,6 @@ void OpenSprinkler::begin() {
 	
 	// detect and check RTC type
 	RTC.detect();
-	
-	// Initialize MirrorLink LORA module if present
-#if defined(ESP32)
-	MirrorLinkInit();
-#endif
 
 #else
 	DEBUG_PRINTLN(get_runtime_path());

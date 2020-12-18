@@ -307,10 +307,13 @@ void do_setup() {
 
 	DEBUG_BEGIN(115200);
 	
-	os.begin();					 // OpenSprinkler init
+	os.begin();			 // OpenSprinkler init
 	os.options_setup();  // Setup options
-
-	pd.init();						// ProgramData init
+	// Initialize MirrorLink LORA module if present
+#if defined(ESP32)
+	MirrorLinkInit();
+#endif
+	pd.init();			 // ProgramData init
 
 	setSyncInterval(RTC_SYNC_INTERVAL);  // RTC sync interval
 	// if rtc exists, sets it as time sync source
@@ -382,10 +385,6 @@ void do_setup() {
 
 	os.mqtt.init();
 	os.status.req_mqtt_restart = true;
-	// Initialize MirrorLink LORA module if present
-#if defined(ESP32)
-	MirrorLinkInit();
-#endif
 }
 #endif
 
