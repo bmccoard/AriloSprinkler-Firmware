@@ -485,16 +485,6 @@ void ml_sta_ap_chconfig() {
 	uint8_t mlNetId, mlChannel, mlPlim;
 	bool mlRemoteMode;
 	uint8_t oks = 0;
-	Serial.println(F("ml_sta_ap_chconfig"));
-	Serial.println(wifi_server->arg("netid").c_str());
-	Serial.println(wifi_server->arg("mlpass1").c_str());
-	Serial.println(wifi_server->arg("mlpass2").c_str());
-	Serial.println(wifi_server->arg("mlpass3").c_str());
-	Serial.println(wifi_server->arg("mlpass4").c_str());
-	Serial.println(wifi_server->arg("mlchan").c_str());
-	Serial.println(wifi_server->arg("mlplim").c_str());
-	Serial.println(wifi_server->arg("dtcycl").c_str());
-	Serial.println(wifi_server->arg("mlrem").c_str());
 	if(   (wifi_server->hasArg("netid")&&wifi_server->arg("netid").length()!=0)
 		&&(wifi_server->hasArg("mlpass1")&&wifi_server->arg("mlpass1").length()!=0)
 		&&(wifi_server->hasArg("mlpass2")&&wifi_server->arg("mlpass2").length()!=0)
@@ -513,20 +503,12 @@ void ml_sta_ap_chconfig() {
 		mlPlim = strtoul(wifi_server->arg("mlplim").c_str(), NULL, 0);
 		mlDutyCycle = wifi_server->arg("dtcycl").toFloat();
 		mlRemoteMode = (bool)strtoul(wifi_server->arg("mlrem").c_str(), NULL, 0);
-		Serial.println(F("Starting checks: "));
 		if ((uint8_t)MirrorLinkSetNetworkId(mlNetId)) oks++;
-		Serial.println(F("NetworkId set"));
 		if (MirrorLinkSetKeys(mlPass1, mlPass2, mlPass3, mlPass4)) oks++;
-		Serial.println(F("Keys set"));
 		if (MirrorLinkSetChannel(mlChannel)) oks++;
-		Serial.println(F("Channel set"));
 		if (MirrorLinkSetPowerLevel(mlPlim)) oks++;
-		Serial.println(F("Power Limit set"));
 		if (MirrorLinkSetStationType(mlRemoteMode)) oks++;
-		Serial.println(F("Mode set"));
 		if (MirrorLinkSetDutyCycle(mlDutyCycle)) oks++;
-		Serial.println(F("Duty Cycle set"));
-		Serial.println(oks);
 		if (oks == 6) {
 			server_send_result(HTML_SUCCESS);
 		}

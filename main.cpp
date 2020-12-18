@@ -222,6 +222,9 @@ void ui_state_machine() {
 						// bit 27 to 31 = cmd
 						MirrorLinkBuffCmd((uint8_t)ML_STATIONREBOOT, (uint32_t)(0));
 					}
+					else {
+						os.reboot_dev(REBOOT_CAUSE_BUTTON);
+					}
 #else
 					os.reboot_dev(REBOOT_CAUSE_BUTTON);
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)

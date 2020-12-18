@@ -34,6 +34,8 @@
 #define MIRRORLINK_STAYALIVE_PERIOD         35     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
+#define MIRRORLINK_KEYCHANGE_MAX_TIME       55//3600   // Maximum period in seconds to renew the keys
+#define MIRRORLINK_KEYCHANGE_MIN_TIME       45//3600   // Minimum period in seconds to renew the keys
 #define ML_FREQUENCY                        866.2  // MirrorLink Frequency
 #define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)
 #define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
@@ -146,7 +148,7 @@ enum {
 };
 
 // Enums for states of the MirrorLink driver
-enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_BUFFERING, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
+enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_KEYRENEWVAL, MIRRORLINK_BUFFERING, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
 
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
 void MirrorLinkPeriodicCommands();
