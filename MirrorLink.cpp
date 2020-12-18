@@ -792,9 +792,7 @@ void MirrorLinkTransmit(void) {
     // If not associated
     // Reset to default key
     if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION) {
-      Serial.println(F(""));
       Serial.println(F("Resetting to default key"));
-      Serial.println(F(""));
       MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
       MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
       MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
@@ -874,9 +872,7 @@ void MirrorLinkTransmit(void) {
     // For station, if not associated or change key process, update key and com. to normal
     if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION)
         || (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
-      Serial.println(F(""));
       Serial.println(F("Changing key"));
-      Serial.println(F(""));
       MirrorLink.key[3] = MirrorLink.key[1];
       MirrorLink.key[2] = MirrorLink.key[0];
       MirrorLink.key[1] = MirrorLink.associationKey[1];
@@ -884,10 +880,6 @@ void MirrorLinkTransmit(void) {
       speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
       // Change communication mode to normal
       MirrorLink.status.comStatus = ML_LINK_COM_NORMAL;
-
-      Serial.println(F(""));
-      Serial.print(F("Entering ML_LINK_COM_NORMAL mode "));
-      Serial.println(F(""));
     }
   }
 }
@@ -922,13 +914,6 @@ bool MirrorLinkReceiveStatus(void) {
 
     // Packet Exchange Control Match flag
     bool packetExchCtrMatch = (bool)((buffer[0] & 0x3FFF) == (MirrorLink.packetExchCtr + 1));
-    
-    Serial.println(F(""));
-    Serial.println(F("packetExchCtrMatch buffer vs packetExchCtr: "));
-    Serial.println(buffer[0] & 0x3FFF);
-    Serial.println(MirrorLink.packetExchCtr + 1);
-    Serial.println(packetExchCtrMatch);
-    Serial.println(F(""));
 
     // If reception and decryption successful
     if (  (MirrorLink.moduleState == ERR_NONE)
@@ -940,16 +925,9 @@ bool MirrorLinkReceiveStatus(void) {
       if (   (MirrorLink.status.mirrorLinkStationType == ML_REMOTE)
           && (   (MirrorLink.status.comStatus == ML_LINK_COM_ASSOCIATION) 
               || (MirrorLink.status.comStatus == ML_LINK_COM_CHANGEKEY))) {
-        Serial.println(F(""));
-        Serial.print(F("Entering ML_LINK_COM_ASSOCIATION OR CHANGEKEY mode "));
-        Serial.println(MirrorLink.status.comStatus);
-        Serial.println(F(""));
 
         // Update second part of the key and update decryption key
-        
-        Serial.println(F(""));
         Serial.println(F("Changing key"));
-        Serial.println(F(""));
 
         MirrorLink.associationKey[1] = buffer[1];
         MirrorLink.key[3] = MirrorLink.key[1];
@@ -959,10 +937,6 @@ bool MirrorLinkReceiveStatus(void) {
         speck_expand(MirrorLink.key, mirrorLinkSpeckKeyExp);
         // Change communication mode to normal
         MirrorLink.status.comStatus = ML_LINK_COM_NORMAL;
-
-        Serial.println(F(""));
-        Serial.print(F("Entering ML_LINK_COM_NORMAL mode "));
-        Serial.println(F(""));
       }
       else if (   (MirrorLink.status.mirrorLinkStationType == ML_STATION)
                && (MirrorLink.status.comStatus == ML_LINK_COM_CHANGEKEY)) {
@@ -972,9 +946,6 @@ bool MirrorLinkReceiveStatus(void) {
         MirrorLink.associationKey[0] = buffer[1];
       }
       else {
-        Serial.println(F(""));
-        Serial.print(F("We are in ML_LINK_COM_NORMAL mode "));
-        Serial.println(F(""));
         if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
           MirrorLink.response = (uint32_t)buffer[1] << 16;
           // Gather SNR and RSSI from station
@@ -1036,17 +1007,11 @@ bool MirrorLinkReceiveStatus(void) {
     }
     else {
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-        Serial.println(F(""));
-        Serial.print(F("Entering ML_LINK_COM_ASSOCIATION mode "));
-        Serial.println(MirrorLink.status.comStatus);
-        Serial.println(F(""));
         // Change communication mode to Association
         MirrorLink.status.comStatus = ML_LINK_COM_ASSOCIATION;
       }
       else {
-        Serial.println(F(""));
         Serial.println(F("Resetting to default key"));
-        Serial.println(F(""));
         // Check if it is an association packet
         MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
         MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
