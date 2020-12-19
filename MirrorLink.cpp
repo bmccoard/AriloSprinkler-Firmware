@@ -73,6 +73,7 @@ typedef union {
     uint32_t comStatus : 2;            // Shows the link communication status
     uint32_t powerLevel : 4;           // Power Level for the link
     uint32_t channelNumber : 4;        // Channel number for the link
+    uint32_t keyRenewalTriedFlag: 1;   // Flag to indicate that a key renewal has been performed
     uint32_t free : 3;                 // Free bits
   };
 } MirrorLinkStateBitfield;
@@ -655,11 +656,12 @@ void MirrorLinkInit(void) {
   MirrorLink.status.stayAlive = (uint32_t)true;
   MirrorLink.status.powerLevel = ((uint32_t)(os.iopts[IOPT_ML_RADIOCTR]) >> 4);
   MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_RADIOCTR]) & 0xF);
+  MirrorLink.status.link = ML_LINK_DOWN;
+  MirrorLink.status.keyRenewalTriedFlag = 0;
   MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
   MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_STAYALIVE_PERIOD;
   MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
   MirrorLink.keyRenewalTimer = os.now_tz() + random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
-  MirrorLink.status.link = ML_LINK_DOWN;
   MirrorLink.snrLocal = 0;
   MirrorLink.rssiLocal = -200;
   MirrorLink.frequency = (float)ML_FREQUENCY;
@@ -1171,6 +1173,15 @@ void MirrorLinkState(void) {
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
           MirrorLinkReceiveInit();
         }
+        // If timeout and key renewal has been attempted
+        else if (  (MirrorLink.sendTimer <= os.now_tz())
+                 && (MirrorLink.status.mirrorlinkState == MIRRORLINK_KEYRENEWVAL)
+                 && (MirrorLink.status.keyRenewalTriedFlag == 1) ) {
+          // Make sure we are in association mode
+          MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
+          MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+        }
       }
       else {
         if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
@@ -1189,9 +1200,10 @@ void MirrorLinkState(void) {
         // If Key Renewal timer to be able to use the channel again is overdue
         //MirrorLink.keyRenewalTimer = os.now_tz() + 1;
         if (MirrorLink.keyRenewalTimer <= os.now_tz()) {
+          MirrorLink.status.keyRenewalTriedFlag = 0;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_KEYRENEWVAL"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
-          MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+          MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
           // Trigger a change of keys
           MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_CHANGEKEY;
           // Reset key renewal timer
@@ -1566,6 +1578,7 @@ void MirrorLinkState(void) {
           }
           else if (MirrorLink.status.comStatus == ML_LINK_COM_CHANGEKEY) {
             MLDEBUG_PRINTLN(F("SATE: MIRRORLINK_KEYRENEWVAL"));
+            MirrorLink.status.keyRenewalTriedFlag = 0;
             MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
             MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
           }
@@ -1608,9 +1621,11 @@ void MirrorLinkWork(void) {
           MirrorLinkTransmit();
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         }
-        // If association request sent
+        // If association/change of keys request sent
         else if (MirrorLinkTransmitStatus() == true) {
-          // Wait for answer to association command
+          MirrorLink.status.keyRenewalTriedFlag = 1;
+          MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+          // Wait for answer to association/change of keys request command
           MirrorLinkReceiveInit();
         }
       }
