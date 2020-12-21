@@ -1,5 +1,5 @@
 /*
-  MirrorLink.h - LORA long range Mirror Link driver for OpenSprinkler
+  MirrorLink.h - LORA long range MirrorLink driver for OpenSprinkler
 
   Copyright (C) 2020 Javier Arigita
 
@@ -31,27 +31,30 @@
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  90//604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_MAX_DUTY_CYCLE           1000//10     // Maximum duty cycle in tenths of % (1 = 0.1)
 #define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
-#define MIRRORLINK_STAYALIVE_PERIOD         35     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_STAYALIVE_PERIOD         35//3600     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #define MIRRORLINK_KEYCHANGE_MAX_TIME       55//3600   // Maximum period in seconds to renew the keys
 #define MIRRORLINK_KEYCHANGE_MIN_TIME       45//3600   // Minimum period in seconds to renew the keys
-#define ML_FREQUENCY                        866.2  // MirrorLink Frequency
-#define ML_TX_POWER                         2      // TX Power without counting the amplification (max. is 16dBm for 30dBm output)
+#define MIRRORLINK_FREQUENCY                866.2  // MirrorLink Frequency
+#define MIRRORLINK_MAX_POWER                16  // MirrorLink maximum transmission power in dBm
+#define MIRRORLINK_MIN_POWER               -17  // MirrorLink minimum transmission power in dBm
+#define MIRRORLINK_AMPLIF_FACTOR            14  // MirrorLink amplification factor in dB (amplifier plus antenna, for plain E22-900T30S with 0dB antenna is 14dBm -> for 16dBm tx, amplification up to 30dBm)
+#define MIRRORLINK_MIN_POWER_BUDGET        -110  // MirrorLink minimum link budget in dBm for proper reception
 #define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
 
 // Speck64/128 encryption based on Moritz Bitsch implementation
-#define SPECK_TYPE                          uint32_t
-#define SPECK_ROUNDS                        27
-#define SPECK_KEY_LEN                       4
-#define ROR(x, r)                           ((x >> r) | (x << ((sizeof(SPECK_TYPE) * 8) - r)))
-#define ROL(x, r)                           ((x << r) | (x >> ((sizeof(SPECK_TYPE) * 8) - r)))
+#define MIRRORLINK_SPECK_TYPE               uint32_t
+#define MIRRORLINK_SPECK_ROUNDS             27
+#define MIRRORLINK_SPECK_KEY_LEN            4
+#define ROR(x, r)                           ((x >> r) | (x << ((sizeof(MIRRORLINK_SPECK_TYPE) * 8) - r)))
+#define ROL(x, r)                           ((x << r) | (x >> ((sizeof(MIRRORLINK_SPECK_TYPE) * 8) - r)))
 #define R(x, y, k)                          (x = ROR(x, 8), x += y, x ^= k, y = ROL(y, 3), y ^= x)
 #define RR(x, y, k)                         (y ^= x, y = ROR(y, 3), x ^= k, x -= y, x = ROL(x, 8))
-#define SPECK_DEFAULT_KEY_N1                0x03020100 // 50462976
-#define SPECK_DEFAULT_KEY_N2                0x0b0a0908 // 185207048
-#define SPECK_DEFAULT_KEY_N3                0x13121110 // 319951120
-#define SPECK_DEFAULT_KEY_N4                0x1b1a1918 // 454695192
+#define MIRRORLINK_SPECK_DEFAULT_KEY_N1     0x03020100 // 50462976
+#define MIRRORLINK_SPECK_DEFAULT_KEY_N2     0x0b0a0908 // 185207048
+#define MIRRORLINK_SPECK_DEFAULT_KEY_N3     0x13121110 // 319951120
+#define MIRRORLINK_SPECK_DEFAULT_KEY_N4     0x1b1a1918 // 454695192
 
 #define ENABLE_DEBUG_MIRRORLINK
 
@@ -158,7 +161,7 @@ bool MirrorLinkSetNetworkId(uint8_t networkid);
 bool MirrorLinkSetStationType(uint8_t type);
 bool MirrorLinkSetKeys(uint32_t ask1, uint32_t ask2, uint32_t ask3, uint32_t ask4);
 bool MirrorLinkSetChannel(uint8_t channel);
-bool MirrorLinkSetPowerLevel(uint8_t powlevel);
+bool MirrorLinkSetMaxPower(uint8_t maxpower);
 bool MirrorLinkSetDutyCycle(float dutycycle);
 void MirrorLinkInit();
 void MirrorLinkMain();

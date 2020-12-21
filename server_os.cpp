@@ -506,7 +506,7 @@ void ml_sta_ap_chconfig() {
 		if ((uint8_t)MirrorLinkSetNetworkId(mlNetId)) oks++;
 		if (MirrorLinkSetKeys(mlPass1, mlPass2, mlPass3, mlPass4)) oks++;
 		if (MirrorLinkSetChannel(mlChannel)) oks++;
-		if (MirrorLinkSetPowerLevel(mlPlim)) oks++;
+		if (MirrorLinkSetMaxPower(mlPlim)) oks++;
 		if (MirrorLinkSetStationType(mlRemoteMode)) oks++;
 		if (MirrorLinkSetDutyCycle(mlDutyCycle)) oks++;
 		if (oks == 6) {
