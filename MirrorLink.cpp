@@ -483,7 +483,7 @@ void MirrorLinkPeriodicCommands(void) {
 String MirrorLinkStatusGeneral() {
 	String mirrorLinkInfo;
 	// Encode in JSON message
-  mirrorLinkInfo = "{\"mode\":["; 
+  mirrorLinkInfo = "{\"mode\":[";
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
     mirrorLinkInfo += "REMOTE";
@@ -514,6 +514,16 @@ String MirrorLinkStatusRadio() {
 	mirrorLinkInfo += "\"";
 	mirrorLinkInfo += String((MirrorLink.dutyCycle) / 10);
 	mirrorLinkInfo += "\"";
+	mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"powerlevel\":["; 
+	mirrorLinkInfo += "\"";
+  if (MirrorLink.status.link == ML_LINK_UP) {
+    mirrorLinkInfo += String(MirrorLink.powerLevel);
+  }
+  else {
+    mirrorLinkInfo += "N.A.";
+  }
+  mirrorLinkInfo += "\"";
 	mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"rssis\":[";
   mirrorLinkInfo += "\"";
@@ -659,15 +669,10 @@ int8_t MirrorLinkPowerLevel(void) {
     else {
       // Calculate power level based on local max and powerCmd received from remote
       uint8_t powerCmd = MirrorLink.status.powerCmd;
-      MLDEBUG_PRINT(F("Power CMD from Remote: "));
-      MLDEBUG_PRINTLN(powerCmd);
       powerLevel = (10 * ((powerCmd & 0x4) >> 2)) + (5 * ((powerCmd & 0x2) >> 1)) + (powerCmd & 0x1);
       if (powerCmd & 0x8) powerLevel *= -1;
       powerLevel += MirrorLink.powerLevel;
     }
-
-    MLDEBUG_PRINT(F("Calculated Transmission Power: "));
-    MLDEBUG_PRINTLN(powerLevel);
 
     // Max./Min. limits
     if (powerLevel < MIRRORLINK_MIN_POWER) {
@@ -680,9 +685,6 @@ int8_t MirrorLinkPowerLevel(void) {
 
   MirrorLink.powerLevel = powerLevel;
 
-  MLDEBUG_PRINT(F("Final Transmission Power: "));
-  MLDEBUG_PRINTLN(powerLevel);
-
   return (int8_t)powerLevel;
 }
 
@@ -694,9 +696,6 @@ uint8_t MirrorLinkPowerCmdEncode(void) {
 
   // Calculate required station power
   stationPower = (int16_t)MIRRORLINK_MIN_POWER_BUDGET - ((int16_t)MirrorLink.rssiLocal + (int16_t)(MirrorLink.snrLocal / 10));
-
-  MLDEBUG_PRINT(F("Calculated Requested Power from Station: "));
-  MLDEBUG_PRINTLN(stationPower);
 
   // If link down use max power
   if (MirrorLink.status.link == ML_LINK_DOWN) stationPower = MIRRORLINK_MAX_POWER;
@@ -729,9 +728,6 @@ uint8_t MirrorLinkPowerCmdEncode(void) {
 
   stationPower = (10 * ((powerCmd & 0x4) >> 2)) + (5 * ((powerCmd & 0x2) >> 1)) + (powerCmd & 0x1);
   if (powerCmd & 0x8) stationPower *= -1;
-
-  MLDEBUG_PRINT(F("Encoded Requested Power Delta from Station: "));
-  MLDEBUG_PRINTLN(stationPower);
 
   return powerCmd;
 }
@@ -975,7 +971,7 @@ void MirrorLinkTransmit(void) {
         }
       }
 
-      plain[1] = (((uint32_t)(snr & 0xFF) << 24) | (((uint32_t)(rssi & 0xFF)) << 16) | ((uint32_t)((MirrorLink.command >> 16) & 0x00FF)));
+      plain[1] = (((uint32_t)(snr & 0xFF) << 24) | (((uint32_t)(rssi & 0xFF)) << 16) | ((uint32_t)(MirrorLink.command >> 16)));
       MirrorLink.command = 0;
     }
   }
@@ -995,10 +991,6 @@ void MirrorLinkTransmit(void) {
   byte byteArr[8] = {(byte)(0xFF & buffer[0] >> 24), (byte)(0xFF & buffer[0] >> 16), (byte)(0xFF & buffer[0] >> 8), (byte)(0xFF & buffer[0]), (byte)(0xFF & buffer[1] >> 24) , (byte)(0xFF & buffer[1] >> 16) , (byte)(0xFF & buffer[1] >> 8) , (byte)(0xFF & buffer[1])};
   MirrorLink.powerLevel = MirrorLinkPowerLevel();
   MirrorLink.moduleState = lora.setOutputPower(MirrorLink.powerLevel);
-  
-  if (MirrorLink.moduleState == ERR_NONE) {
-    MLDEBUG_PRINTLN(F("Transmit Power Configured correctly"));
-  }
 
   MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
@@ -1297,8 +1289,7 @@ void MirrorLinkState(void) {
     case MIRRORLINK_KEYRENEWVAL:
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         // Wait for associating answer
-        if (   (MirrorLinkReceiveStatus() == true) 
-            && (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) ) {
+        if (MirrorLinkReceiveStatus() == true) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message

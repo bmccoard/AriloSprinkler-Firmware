@@ -18,7 +18,7 @@ table#mlsr th { border: 3px solid black;}
 table#mlsr td { border: 3px solid black; border-collapse: collapse;}</style>
 <caption><b style='color:black'>Radio Status</caption><br><br>
 <table cellspacing=4 id='mlsr'>
-  <tr><td>Frequency&nbsp&nbsp</td><td>DutyCycle&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Association Status&nbsp&nbsp</td><td>Association Attempts&nbsp&nbsp</td></tr>
+  <tr><td>Frequency&nbsp&nbsp</td><td>DutyCycle&nbsp&nbsp</td><td>TX Power&nbsp&nbsp</td><td>Local RSSI&nbsp&nbsp</td><td>Remote RSSI&nbsp&nbsp</td><td>Local SNR&nbsp&nbsp</td><td>Remote SNR&nbsp&nbsp</td><td>Association Status&nbsp&nbsp</td><td>Association Attempts&nbsp&nbsp</td></tr>
   <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
@@ -73,7 +73,7 @@ function showStatusGeneral() {
   }
   xhr.open('GET','mlstatusgeneral',true); xhr.send();
 }
-setInterval(showStatusGeneral, 5000);
+setInterval(showStatusGeneral, 10000);
 function showStatusRadio() {
   var xhr=new XMLHttpRequest();
   xhr.onreadystatechange=function() {
@@ -81,7 +81,7 @@ function showStatusRadio() {
       id('mlsr').deleteRow(1);
       var jd=JSON.parse(xhr.responseText);
       var row=id('mlsr').insertRow(-1);
-      row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>" + "<td align='center'>("+jd.dutycycle+"%)</td>" + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.assocst +")</td>" + "<td align='center'>("+jd.assocatm +")</td>" + "</tr>";
+      row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>" + "<td align='center'>("+jd.dutycycle+"%)</td>" + "<td align='center'>("+jd.powerlevel+" dbm)</td>" + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.assocst +")</td>" + "<td align='center'>("+jd.assocatm +")</td>" + "</tr>";
     };
   }
   xhr.open('GET','mlstatusradio',true); xhr.send();
@@ -99,6 +99,6 @@ function showStatusPackets() {
   }
   xhr.open('GET','mlstatuspackets',true); xhr.send();
 }
-setInterval(showStatusPackets, 5000);
+setInterval(showStatusPackets, 7000);
 </script>
 </body>
