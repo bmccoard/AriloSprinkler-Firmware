@@ -77,13 +77,13 @@
 #endif
 
 // Enum for station types
-enum {
+enum MirrorlinkStationType {
   ML_STATION = 0,     // Type is station
   ML_REMOTE,          // Type is remote
 };
 
 // Enum for commands
-enum {
+enum MirrorlinkCommands {
   ML_NO_CMD = 0,              // No command
   ML_TESTSTATION,             // Switch on station for a specific duration in minutes
   ML_PROGRAMADDDEL,           // Create/delete a program
@@ -106,52 +106,60 @@ enum {
 };
 
 // Enum for channel numbers
-enum {
+enum MirrorlinkChannels {
   ML_CH_0 = 0,     // Channel 0
-	ML_CH_1,         // Channel 1
-	ML_CH_2,         // Channel 2
-	ML_CH_3,         // Channel 3
-	ML_CH_4,         // Channel 4
-	ML_CH_5,         // Channel 5
-	ML_CH_6,         // Channel 6
-	ML_CH_7,         // Channel 7
-	ML_CH_8,         // Channel 8
-	ML_CH_9,         // Channel 9
-	ML_CH_10,        // Channel 10
-	ML_CH_11,        // Channel 11
-	ML_CH_12,        // Channel 12
-	ML_CH_13,        // Channel 13
-	ML_CH_14,        // Channel 14
-	ML_CH_15,        // Channel 15
+  ML_CH_1,         // Channel 1
+  ML_CH_2,         // Channel 2
+  ML_CH_3,         // Channel 3
+  ML_CH_4,         // Channel 4
+  ML_CH_5,         // Channel 5
+  ML_CH_6,         // Channel 6
+  ML_CH_7,         // Channel 7
+  ML_CH_8,         // Channel 8
+  ML_CH_9,         // Channel 9
+  ML_CH_10,        // Channel 10
+  ML_CH_11,        // Channel 11
+  ML_CH_12,        // Channel 12
+  ML_CH_13,        // Channel 13
+  ML_CH_14,        // Channel 14
+  ML_CH_15,        // Channel 15
+  ML_CH_MAX        // Max. channel number
 };
 
 // Enum for transmit/receive status
-enum {
+enum MirrorlinkTxRx {
   ML_RECEIVING = 0,// Module is transmitting
-	ML_TRANSMITTING  // Module is receiving
+  ML_TRANSMITTING  // Module is receiving
 };
 
 // Enum for link active/inactive
-enum {
+enum MirrorlinkStatus {
   ML_LINK_DOWN = 0,// Link is down
-	ML_LINK_UP       // Link is up
+  ML_LINK_UP       // Link is up
 };
 
 // Enum for errors
-enum {
+enum MirrorlinkErrors {
   ML_NO_ERROR = 0,  // No error
   ML_SYNCERROR      // Sync. error between remote and station
 };
 
 // Enum for link communication phase
-enum {
+enum MirrorlinkComPhase {
   ML_LINK_COM_ASSOCIATION = 0, // Association process ongoing
-	ML_LINK_COM_CHANGEKEY,       // Change of key process ongoing
-  ML_LINK_COM_NORMAL,          // Normal communication ongoing
+  ML_LINK_COM_CHANGEKEY,       // Change of key process ongoing
+  ML_LINK_COM_NORMAL           // Normal communication ongoing
 };
 
 // Enums for states of the MirrorLink driver
-enum MirrorlinkModes { MIRRORLINK_INIT, MIRRORLINK_ASSOCIATE, MIRRORLINK_KEYRENEWVAL, MIRRORLINK_BUFFERING, MIRRORLINK_SEND, MIRRORLINK_RECEIVE };
+enum MirrorlinkModes { 
+  MIRRORLINK_INIT = 0,         // Init state
+  MIRRORLINK_ASSOCIATE,        // Associate state
+  MIRRORLINK_KEYRENEWVAL,      // Key renewval state
+  MIRRORLINK_BUFFERING,        // Buffering state
+  MIRRORLINK_SEND,             // Send state
+  MIRRORLINK_RECEIVE           // Receive state
+};
 
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload);
 void MirrorLinkPeriodicCommands();
