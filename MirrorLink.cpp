@@ -663,7 +663,7 @@ int8_t MirrorLinkPowerLevel(void) {
       MLDEBUG_PRINTLN(powerCmd);
       powerLevel = (10 * ((powerCmd & 0x4) >> 2)) + (5 * ((powerCmd & 0x2) >> 1)) + (powerCmd & 0x1);
       if (powerCmd & 0x8) powerLevel *= -1;
-      powerLevel = MirrorLink.powerLevel + powerLevel;
+      powerLevel += MirrorLink.powerLevel;
     }
 
     MLDEBUG_PRINT(F("Calculated Transmission Power: "));
@@ -1303,7 +1303,6 @@ void MirrorLinkState(void) {
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-          MirrorLinkReceiveInit();
           // Update Link status
           MirrorLink.status.link = ML_LINK_UP;
         }
@@ -1378,7 +1377,6 @@ void MirrorLinkState(void) {
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-          MirrorLinkReceiveInit();
         }
       }
       else {
