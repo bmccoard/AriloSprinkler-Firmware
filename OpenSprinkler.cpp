@@ -185,7 +185,8 @@ const char iopt_json_names[] PROGMEM =
 	"mla15"
 	"mla16"
 	"mlnid"
-	"mlrct"
+	"mlcha"
+	"mlpli"
 	"mldc1"
 	"mldc2"
 	"mltyp"
@@ -294,7 +295,8 @@ const char iopt_prompts[] PROGMEM =
 	"ML AssocKey 15: "
 	"ML AssocKey 16: "
 	"ML NetworkID:   "
-	"ML RadioCtr:    "
+	"ML Channel Num: "
+	"ML Max. Power:  "
 	"ML DutyCycle 1: "
 	"ML DutyCycle 1: "
 	"ML StationType: "
@@ -368,7 +370,7 @@ const byte iopt_max[] PROGMEM = {
 	255,
 	255,
 	255,
-	#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	255,
 	255,
 	255,
@@ -387,7 +389,8 @@ const byte iopt_max[] PROGMEM = {
 	255,
 	255,
 	255,
-	255,
+	15,
+	30,
 	255,
 	255,
 	1,
@@ -469,28 +472,29 @@ byte OpenSprinkler::iopts[] = {
 	0,
 	WIFI_M_AP, // wifi mode
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
-	0, // reset
-	3,
-	2,
-	1,
-	0,
-	11,
-	10,
-	9,
-	8,
-	19,
-	18,
-	17,
-	16,
-	27,
-	26,
-	25,
-	24,
-	148,
-	0,
-	0,
-	10,
-	0,
+	0,   // reset
+	3,   // association key byte 1
+	2,   // association key byte 2
+	1,   // association key byte 3
+	0,   // association key byte 4
+	11,  // association key byte 5
+	10,  // association key byte 6
+	9,   // association key byte 7
+	8,   // association key byte 8
+	19,  // association key byte 9
+	18,  // association key byte 10
+	17,  // association key byte 11
+	16,  // association key byte 12
+	27,  // association key byte 13
+	26,  // association key byte 14
+	25,  // association key byte 15
+	24,  // association key byte 16
+	148, // MirrorLink Network ID
+	0,   // default Channel
+	30,  // maximum power
+	0,   // duty cycle byte 1
+	10,  // duty cycle byte 2
+	0,   // default station type
 #else
 	0  // reset
 #endif

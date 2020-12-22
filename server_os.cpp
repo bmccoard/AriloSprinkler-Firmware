@@ -483,7 +483,7 @@ void ml_sta_ap_chconfig() {
 	uint32_t mlPass1, mlPass2, mlPass3, mlPass4;
 	float mlDutyCycle;
 	uint8_t mlNetId, mlChannel, mlPlim;
-	bool mlRemoteMode;
+	bool mlFHEnable, mlATPCEnable, mlRemoteMode;
 	uint8_t oks = 0;
 	if(   (wifi_server->hasArg("netid")&&wifi_server->arg("netid").length()!=0)
 		&&(wifi_server->hasArg("mlpass1")&&wifi_server->arg("mlpass1").length()!=0)
@@ -491,7 +491,9 @@ void ml_sta_ap_chconfig() {
 		&&(wifi_server->hasArg("mlpass3")&&wifi_server->arg("mlpass3").length()!=0)
 		&&(wifi_server->hasArg("mlpass4")&&wifi_server->arg("mlpass4").length()!=0)
 		&&(wifi_server->hasArg("mlchan")&&wifi_server->arg("mlchan").length()!=0)
+		&&(wifi_server->hasArg("mlfhop")&&wifi_server->arg("mlfhop").length()!=0)
 		&&(wifi_server->hasArg("mlplim")&&wifi_server->arg("mlplim").length()!=0)
+		&&(wifi_server->hasArg("mlatpc")&&wifi_server->arg("mlatpc").length()!=0)
 		&&(wifi_server->hasArg("dtcycl")&&wifi_server->arg("dtcycl").length()!=0)
 		&&(wifi_server->hasArg("mlrem")&&wifi_server->arg("mlrem").length()!=0)) {
 		mlNetId = strtoul(wifi_server->arg("netid").c_str(), NULL, 0);
@@ -500,16 +502,20 @@ void ml_sta_ap_chconfig() {
 		mlPass3 = strtoul(wifi_server->arg("mlpass3").c_str(), NULL, 0);
 		mlPass4 = strtoul(wifi_server->arg("mlpass4").c_str(), NULL, 0);
 		mlChannel = strtoul(wifi_server->arg("mlchan").c_str(), NULL, 0);
+		mlFHEnable = (bool)strtoul(wifi_server->arg("mlfhop").c_str(), NULL, 0);
 		mlPlim = strtoul(wifi_server->arg("mlplim").c_str(), NULL, 0);
+		mlATPCEnable = (bool)strtoul(wifi_server->arg("mlatpc").c_str(), NULL, 0);
 		mlDutyCycle = wifi_server->arg("dtcycl").toFloat();
 		mlRemoteMode = (bool)strtoul(wifi_server->arg("mlrem").c_str(), NULL, 0);
 		if ((uint8_t)MirrorLinkSetNetworkId(mlNetId)) oks++;
 		if (MirrorLinkSetKeys(mlPass1, mlPass2, mlPass3, mlPass4)) oks++;
 		if (MirrorLinkSetChannel(mlChannel)) oks++;
+		if (MirrorLinkSetFrequencyHoppingStatus(mlFHEnable)) oks++;
 		if (MirrorLinkSetMaxPower(mlPlim)) oks++;
+		if (MirrorLinkSetATPCStatus(mlATPCEnable)) oks++;
 		if (MirrorLinkSetStationType(mlRemoteMode)) oks++;
 		if (MirrorLinkSetDutyCycle(mlDutyCycle)) oks++;
-		if (oks == 6) {
+		if (oks == 8) {
 			server_send_result(HTML_SUCCESS);
 		}
 		else {

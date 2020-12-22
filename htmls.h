@@ -169,7 +169,9 @@ table#mlsp td { border: 3px solid black; border-collapse: collapse;}</style>
 <tr><td><input type='number' name='mlpass3' id='mlpass3' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 3 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlpass4' id='mlpass4' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 4 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlchan' id='mlchan' min='0' max='15' style='font-size:14pt;height:28px;'></td><td>Channel (0 to 15)</td></tr>
-<tr><td><input type='number' name='mlplim' id='mlplim' min='0' max='30' style='font-size:14pt;height:28px;'></td><td>Power Limit (0 to 30dBm)</td></tr>
+<tr><td><input type='checkbox' name='mlfhop' id='mlfhop' value='1' style='font-size:14pt;height:28px;'></td><td>Frequency Hopping</td></tr>
+<tr><td><input type='number' name='mlplim' id='mlplim' min='-20' max='30' style='font-size:14pt;height:28px;'></td><td>Power Limit (-20 to +30dBm)</td></tr>
+<tr><td><input type='checkbox' name='mlatpc' id='mlatpc' value='1' style='font-size:14pt;height:28px;'></td><td>ATPC (Adaptive Transmission Power Control)</td></tr>
 <tr><td><input type='number' name='dtcycl' id='dtcycl' min='0.0' max='100.0' step='0.1' style='font-size:14pt;height:28px;'></td><td>Duty Cycle (0.0 to 100.0)</td></tr>
 <tr><td><input type='checkbox' name='mlrem' id='mlrem' value='1' style='font-size:14pt;height:28px;'></td><td>Remote Mode</td></tr>
 <tr><td colspan=2><p id='msg'></p></td></tr>
@@ -184,12 +186,16 @@ xhr.onreadystatechange=function() {
 if(xhr.readyState==4 && xhr.status==200) {
 var jd=JSON.parse(xhr.responseText);
 if(jd.result==1) { return; }
-id('msg').innerHTML='<b><font color=red>Error code: '+jd.result+', item: '+jd.item+'</font></b>'; id('butt').innerHTML='Submit'; id('butt').disabled=false;id('mlpass1').disabled=false;id('mlpass2').disabled=false;id('mlpass3').disabled=false;id('mlpass4').disabled=false;id('mlchan').disabled=false;id('mlplim').disabled=false;id('mlrem').disabled=false;
+id('msg').innerHTML='<b><font color=red>Error code: '+jd.result+', item: '+jd.item+'</font></b>'; id('butt').innerHTML='Submit'; id('butt').disabled=false;id('mlpass1').disabled=false;id('mlpass2').disabled=false;id('mlpass3').disabled=false;id('mlpass4').disabled=false;id('mlchan').disabled=false;id('mlplim').disabled=false;id('dtcycl').disabled=false;id('mlrem').disabled=false;
 }
 };
-var check = 0;
-if (id('mlrem').checked == true) { check = 1; }
-var comm='mlchconfig?netid='+encodeURIComponent(id('netid').value)+'&mlpass1='+encodeURIComponent(id('mlpass1').value)+'&mlpass2='+encodeURIComponent(id('mlpass2').value)+'&mlpass3='+encodeURIComponent(id('mlpass3').value)+'&mlpass4='+encodeURIComponent(id('mlpass4').value)+'&mlchan='+encodeURIComponent(id('mlchan').value)+'&mlplim='+encodeURIComponent(id('mlplim').value)+'&dtcycl='+encodeURIComponent(id('dtcycl').value)+'&mlrem='+check;
+var checkrem=0;
+var checkfhop=0;
+var checkatpc=0;
+if (id('mlrem').checked == true) { checkrem = 1; }
+if (id('mlfhop').checked == true) { checkfhop = 1; }
+if (id('mlatpc').checked == true) { checkatpc = 1; }
+var comm='mlchconfig?netid='+encodeURIComponent(id('netid').value)+'&mlpass1='+encodeURIComponent(id('mlpass1').value)+'&mlpass2='+encodeURIComponent(id('mlpass2').value)+'&mlpass3='+encodeURIComponent(id('mlpass3').value)+'&mlpass4='+encodeURIComponent(id('mlpass4').value)+'&mlchan='+encodeURIComponent(id('mlchan').value)+'&mlfhop='+checkfhop+'&mlplim='+encodeURIComponent(id('mlplim').value)+'&mlatpc='+checkatpc+'&dtcycl='+encodeURIComponent(id('dtcycl').value)+'&mlrem='+checkrem;
 xhr.open('GET', comm, true); xhr.send();
 }
 function showStatusGeneral() {

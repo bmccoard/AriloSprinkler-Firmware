@@ -92,8 +92,9 @@ typedef union {
     uint32_t comStatus : 2;            // Shows the link communication status
     uint32_t powerCmd : 4;             // Power level command to be sent by remote and executed by station
     uint32_t channelNumber : 4;        // Channel number for the link
-    uint32_t keyRenewalTriedFlag: 1;   // Flag to indicate that a key renewal has been performed
-    uint32_t free : 2;                 // Free bits
+    uint32_t keyRenewalTriedFlag : 1;  // Flag to indicate that a key renewal has been performed
+    uint32_t freqHopState : 1;         // State of Frequency Hopping (1 = enable, 0 = disable)
+    uint32_t atpcState : 1;            // State of the Adaptive Transmissison Power Control (1 = enable, 0 = disable)
   };
 } MirrorLinkStateBitfield;
 
@@ -288,9 +289,8 @@ bool MirrorLinkSetKeys(uint32_t ask1, uint32_t ask2, uint32_t ask3, uint32_t ask
 bool MirrorLinkSetChannel(uint8_t channel) {
   bool accepted = false;
   if ((channel <= 15) && (channel >= 0)) {
-    MirrorLink.status.channelNumber = channel;
-    os.iopts[IOPT_ML_RADIOCTR] &= 0xF0;
-    os.iopts[IOPT_ML_RADIOCTR] |= channel;
+    os.iopts[IOPT_ML_DEFCHANNEL] &= 0xF0;
+    os.iopts[IOPT_ML_DEFCHANNEL] |= channel;
     accepted = true;
     MLDEBUG_PRINTLN(F("Saving options Channel"));
     os.iopts_save();
@@ -301,14 +301,64 @@ bool MirrorLinkSetChannel(uint8_t channel) {
   return accepted;
 }
 
-bool MirrorLinkSetMaxPower(uint8_t maxpower) {
+bool MirrorLinkSetFrequencyHoppingStatus(uint8_t freqhopstatus) {
   bool accepted = false;
-  if ((maxpower <= 15) && (maxpower >= 0)) {
+  if (freqhopstatus == 1) {
+    os.iopts[IOPT_ML_DEFCHANNEL] |= 0x80;
+    accepted = true;
+    MirrorLink.status.freqHopState = (uint32_t)1;
+    MLDEBUG_PRINTLN(F("Saving options Frequency Hopping Status"));
+    os.iopts_save();
+  }
+  else if (freqhopstatus == 0) {
+    os.iopts[IOPT_ML_DEFCHANNEL] &= 0x7F;
+    accepted = true;
+    MirrorLink.status.freqHopState = (uint32_t)0;
+    MLDEBUG_PRINTLN(F("Saving options Frequency Hopping Status"));
+    os.iopts_save();
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
+bool MirrorLinkSetMaxPower(int8_t maxpower) {
+  bool accepted = false;
+  if ((maxpower <= 30) && (maxpower >= -20)) {
     MirrorLink.powerMax = maxpower;
-    os.iopts[IOPT_ML_RADIOCTR] &= 0x0F;
-    os.iopts[IOPT_ML_RADIOCTR] |= (maxpower << 4);
+    os.iopts[IOPT_ML_MAXPOWER] = 0;
+    if (maxpower < 0) {
+      maxpower *= -1;
+      os.iopts[IOPT_ML_MAXPOWER] = (0x40 | (uint8_t)maxpower);
+    }
+    else {
+      os.iopts[IOPT_ML_MAXPOWER] = (uint8_t)maxpower;
+    }
     accepted = true;
     MLDEBUG_PRINTLN(F("Saving options Power"));
+    os.iopts_save();
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
+bool MirrorLinkSetATPCStatus(uint8_t atpcstatus) {
+  bool accepted = false;
+  if (atpcstatus == 1) {
+    os.iopts[IOPT_ML_MAXPOWER] |= 0x80;
+    accepted = true;
+    MirrorLink.status.atpcState = (uint32_t)1;
+    MLDEBUG_PRINTLN(F("Saving options Adaptive Transmission Power Control Status"));
+    os.iopts_save();
+  }
+  else if (atpcstatus == 0) {
+    os.iopts[IOPT_ML_MAXPOWER] &= 0x7F;
+    accepted = true;
+    MirrorLink.status.atpcState = (uint32_t)0;
+    MLDEBUG_PRINTLN(F("Saving options Adaptive Transmission Power Control Status"));
     os.iopts_save();
   }
   else {
@@ -674,8 +724,9 @@ String MirrorLinkStatusPackets() {
 // Calculate power level
 int8_t MirrorLinkPowerLevel(void) {
   int16_t powerLevel;
-  if (MirrorLink.status.link == ML_LINK_DOWN) {
-    powerLevel = MIRRORLINK_MAX_POWER;
+  if (   (MirrorLink.status.link == ML_LINK_DOWN)
+      || (MirrorLink.status.atpcState == 0)) {
+    powerLevel = MirrorLink.powerMax;
     MLDEBUG_PRINTLN(F("ML_LINK_DOWN"));
   }
   else {
@@ -692,12 +743,17 @@ int8_t MirrorLinkPowerLevel(void) {
       powerLevel += MirrorLink.powerLevel;
     }
 
-    // Max./Min. limits
+    // Max./Min. absolute limits
     if (powerLevel < MIRRORLINK_MIN_POWER) {
       powerLevel = MIRRORLINK_MIN_POWER;
     }
     else if (powerLevel > MIRRORLINK_MAX_POWER) {
       powerLevel = MIRRORLINK_MAX_POWER;
+    }
+
+    //Max. relative limit
+    if (powerLevel > MirrorLink.powerMax) {
+      powerLevel = MirrorLink.powerMax;
     }
   }
 
@@ -716,7 +772,7 @@ uint8_t MirrorLinkPowerCmdEncode(void) {
   stationPower = (int16_t)MIRRORLINK_MIN_POWER_BUDGET - ((int16_t)MirrorLink.rssiLocal + (int16_t)(MirrorLink.snrLocal / 10));
 
   // If link down use max power
-  if (MirrorLink.status.link == ML_LINK_DOWN) stationPower = MIRRORLINK_MAX_POWER;
+  if (MirrorLink.status.link == ML_LINK_DOWN) stationPower = MirrorLink.powerMax;
 
   // Total 4 bit, MSB is the sign, bit 3 represents 10dB, bit 2 represents 5dB, bit 1 represents 1dB
   
@@ -763,12 +819,12 @@ void MirrorLinkInit(void) {
   MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
   MirrorLink.status.rebootRequest = (uint32_t)false;
   MirrorLink.status.stayAlive = (uint32_t)true;
-  MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_RADIOCTR]) & 0xF);
-  // TODO!: Change
-  MirrorLink.status.channelNumber = 0;
+  MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
   MirrorLink.status.link = ML_LINK_DOWN;
   MirrorLink.status.keyRenewalTriedFlag = 0;
-  MirrorLink.status.powerCmd = 0;
+  MirrorLink.status.powerCmd = (uint32_t)0;
+  MirrorLink.status.freqHopState = ((uint32_t)((os.iopts[IOPT_ML_DEFCHANNEL]) & 0x80) >> 7);
+  MirrorLink.status.atpcState = ((uint32_t)((os.iopts[IOPT_ML_MAXPOWER]) & 0x80) >> 7);
   MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
   MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_STAYALIVE_PERIOD;
   MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
@@ -805,8 +861,13 @@ void MirrorLinkInit(void) {
   for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
   sprintf_P(mirrorlinkProg.name, "%d", 0);
   MirrorLink.packetExchCtr = 0;
-  MirrorLink.powerLevel = MIRRORLINK_MAX_POWER;
-  MirrorLink.powerMax = ((uint32_t)(os.iopts[IOPT_ML_RADIOCTR]) >> 4);
+  if (os.iopts[IOPT_ML_MAXPOWER] & 0x40) {
+    MirrorLink.powerMax = (int8_t)(os.iopts[IOPT_ML_MAXPOWER] & 0x3F) * ((int8_t)-1);
+  }
+  else {
+    MirrorLink.powerMax = (int8_t)(os.iopts[IOPT_ML_MAXPOWER] & 0x3F);
+  }
+  MirrorLink.powerLevel = MirrorLink.powerMax;
 
 	MLDEBUG_BEGIN(115200);
 
@@ -915,7 +976,7 @@ void MirrorLinkTransmit(void) {
       MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
       MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
       MirrorLinkSpeckExpand(MirrorLink.key, MirrorLinkSpeckKeyExp);
-      MirrorLink.status.channelNumber = 0;
+      MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
     }
   }
 
@@ -1003,7 +1064,12 @@ void MirrorLinkTransmit(void) {
     // Send Power Level to station
     MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
     // Send next channel to station
-    nextChannel = random(0, ML_CH_MAX);
+    if (MirrorLink.status.freqHopState == 1) {
+      nextChannel = random(0, ML_CH_MAX);
+    }
+    else {
+      nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+    }
   }
 
   plain[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStatus) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
@@ -1271,7 +1337,7 @@ void MirrorLinkStayAliveControl(void) {
       if (os.now_tz() > MirrorLink.stayAliveTimer) {
         // Disable system
         os.disable();
-        MirrorLink.status.channelNumber = 0;
+        MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
         MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
         // MirrorLink status down
         MirrorLink.status.link = ML_LINK_DOWN;
@@ -1343,7 +1409,7 @@ void MirrorLinkState(void) {
           MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-          MirrorLink.status.channelNumber = 0;
+          MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Update Link status
           MirrorLink.status.link = ML_LINK_DOWN;
         }
@@ -1472,7 +1538,7 @@ void MirrorLinkState(void) {
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-          MirrorLink.status.channelNumber = 0;
+          MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
 
