@@ -1595,17 +1595,18 @@ void server_change_options()
 
 			// Send station command over MirrorLink
 			// Payload format: 
+			// bit 0 to 23 = longitude
+			// bit 24 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));
+
+			// Send station command over MirrorLink
+			// Payload format: 
 			// bit 0 to 23 = latitude
 			// bit 24 to 26 = Not used
 			// bit 27 to 31 = cmd
 			MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0xFFFFFF & fp_lat));
 
-			// Send station command over MirrorLink
-			// Payload format: 
-			// bit 0 to 23 = longitude
-			// bit 24 to 26 = Not used
-			// bit 27 to 31 = cmd
-			MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));
 		}
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
