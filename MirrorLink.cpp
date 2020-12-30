@@ -89,7 +89,7 @@ typedef union {
     uint32_t rebootRequest : 1;        // Reboot request
     uint32_t stayAlive : 1;            // Bit to indicate if the stayalive feature is active
     uint32_t link : 1;                 // Shows if link is up or down
-    uint32_t comStatus : 2;            // Shows the link communication status
+    uint32_t comStationState : 2;      // Command sent from remote to change station state
     uint32_t powerCmd : 4;             // Power level command to be sent by remote and executed by station
     uint32_t channelNumber : 4;        // Channel number for the link
     uint32_t keyRenewalTriedFlag : 1;  // Flag to indicate that a key renewal has been performed
@@ -99,34 +99,34 @@ typedef union {
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  uint32_t key[4];                          // Encryption key for the Link
-  uint32_t associationKey[2];               // Association key for the Link used to generate new key
-  time_t sendTimer;                         // Timer in seconds to control send timing
-  MirrorLinkStateBitfield status;           // Bittfield including states as well as several flags
-  time_t stayAliveTimer;                    // Timer in seconds to control if remote and station are still connected
-  time_t stayAliveMaxPeriod;                // Maximum period in seconds configured to control if remote and station are still connected
-  time_t keyRenewalTimer;                   // Timer to control the key renewal process
-  uint32_t packetsSent;                     // Number of sent packets
-  uint32_t packetsReceived;                 // Number of received packets
-  uint32_t buffer[MIRRORLINK_BUFFERLENGTH]; // Buffer for queued commands to be sent to station
-  uint32_t response;                        // Response from the station to the last command sent
-  uint32_t txTime;                          // Time used to transmit a payload in milliseconds
-  uint32_t command;                         // Command to be executed by the station
-  int32_t latitude;                         // Latitude of the remote station
-  int32_t longitude;                        // Longitude of the remote station
-  int16_t moduleState;                      // LORA module state
-  uint16_t packetExchCtr;                   // Counter to control sequence of packets exchanged in the link
-  uint16_t associationAttempts;             // Counter to control the number of association attempts
-  int16_t snrLocal;                         // Local SNR (local reception)
-  int16_t rssiLocal;                        // Local RSSI (local reception)
-  uint16_t dutyCycle;                       // Maximum duty cycle in tenths of % (1 = 0.1)
-  int16_t snrRemote;                        // Remote SNR (remote reception)
-  int16_t rssiRemote;                       // Remote RSSI (remote reception)
-  uint8_t bufferedCommands;                 // Number of buffered commands to be sent
-  uint8_t indexBufferHead;                  // Index of the first element in the command buffer
-  uint8_t indexBufferTail;                  // Index of the last element in the command buffer   
-  int8_t powerLevel;                        // Transmission power
-  int8_t powerMax;                          // Maximum allowed transmission power
+  uint32_t key[MIRRORLINK_SPECK_KEY_LEN];             // Encryption key for the Link
+  uint32_t associationKey[MIRRORLINK_SPECK_TEXT_LEN]; // Association key for the Link used to generate new key
+  time_t sendTimer;                                   // Timer in seconds to control send timing
+  MirrorLinkStateBitfield status;                     // Bittfield including states as well as several flags
+  time_t stayAliveTimer;                              // Timer in seconds to control if remote and station are still connected
+  time_t stayAliveMaxPeriod;                          // Maximum period in seconds configured to control if remote and station are still connected
+  time_t keyRenewalTimer;                             // Timer to control the key renewal process
+  uint32_t packetsSent;                               // Number of sent packets
+  uint32_t packetsReceived;                           // Number of received packets
+  uint32_t buffer[MIRRORLINK_BUFFERLENGTH];           // Buffer for queued commands to be sent to station
+  uint32_t response;                                  // Response from the station to the last command sent
+  uint32_t txTime;                                    // Time used to transmit a payload in milliseconds
+  uint32_t command;                                   // Command to be executed by the station
+  int32_t latitude;                                   // Latitude of the remote station
+  int32_t longitude;                                  // Longitude of the remote station
+  int16_t moduleState;                                // LORA module state
+  uint16_t packetExchCtr;                             // Counter to control sequence of packets exchanged in the link
+  uint16_t associationAttempts;                       // Counter to control the number of association attempts
+  int16_t snrLocal;                                   // Local SNR (local reception)
+  int16_t rssiLocal;                                  // Local RSSI (local reception)
+  uint16_t dutyCycle;                                 // Maximum duty cycle in tenths of % (1 = 0.1)
+  int16_t snrRemote;                                  // Remote SNR (remote reception)
+  int16_t rssiRemote;                                 // Remote RSSI (remote reception)
+  uint8_t bufferedCommands;                           // Number of buffered commands to be sent
+  uint8_t indexBufferHead;                            // Index of the first element in the command buffer
+  uint8_t indexBufferTail;                            // Index of the last element in the command buffer   
+  int8_t powerLevel;                                  // Transmission power
+  int8_t powerMax;                                    // Maximum allowed transmission power
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
@@ -641,7 +641,7 @@ String MirrorLinkStatusRadio() {
   mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"assocst\":[";
   mirrorLinkInfo += "\"";
-  switch (MirrorLink.status.comStatus) {
+  switch (MirrorLink.status.comStationState) {
     case ML_LINK_COM_ASSOCIATION:
       mirrorLinkInfo += "ASSOCIATING";
       break;
@@ -814,7 +814,7 @@ void MirrorLinkInit(void) {
   MirrorLink.status.enableInterrupt = (uint32_t)true;
   MirrorLink.status.mirrorlinkState = (uint32_t)MIRRORLINK_INIT;
   MirrorLink.status.flagRxTx = (uint32_t)ML_RECEIVING;
-  MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
+  MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
   MirrorLink.status.rebootRequest = (uint32_t)false;
   MirrorLink.status.stayAlive = (uint32_t)true;
   MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
@@ -1001,164 +1001,179 @@ bool MirrorLinkTransmitStatus(void) {
   return txSuccessful;
 }
 
-void MirrorLinkTransmit(void) {
-  uint8_t nextChannel = 0;
-  // Important! To enable transmit you need to switch the SX126x antenna switch to TRANSMIT
+bool MirrorLinkTransmit(byte *txArray) {
+  bool txStartSuccessful = false;
   enableTX();
   MLDEBUG_PRINTLN(F("[SX1262] Starting to transmit ... "));
-  uint32_t plain[2] = {0, 0};
-  uint32_t buffer[2] = {0, 0};
-
-  // TODO: Too much spaguetti. Change for a state machine and simplify!!!
-
-  if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-    // Send Power Level to station
-    MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
-    // If not associated
-    // Reset to default key
-    if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION) {
-      MLDEBUG_PRINTLN(F("Resetting to default key"));
-      MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
-      MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
-      MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
-      MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
-      MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
-      MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-    }
-    else {
-      // Send next channel to station
-      if (MirrorLink.status.freqHopState == 1) {
-        nextChannel = random(0, ML_CH_MAX);
-      }
-      else {
-        nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-      }
-    }
-  }
-
-  // If not associated or change key process
-  if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION)
-      || (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
-    MirrorLink.txTime = millis();
-    if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION) MirrorLink.associationAttempts++;
-    if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-      // Initialized packetExchCtr with random number
-      if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION) {
-        MirrorLink.packetExchCtr = random(16383);
-        // Request always the maximum allowed transmit power when in association
-
-      }
-      else {
-        MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-      }
-      // Generate first part of future random key for the link
-      MirrorLink.associationKey[0] = (uint32_t)random(INT32_MAX);
-      plain[1] = MirrorLink.associationKey[0];
-    }
-    else {
-      // Increase packetExchCtr value
-      MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-      // Generate second part of future random key for the link
-      MirrorLink.associationKey[1] = (uint32_t)random(INT32_MAX);
-      plain[1] = MirrorLink.associationKey[1];
-    }
-  }
-  // Else if mode is normal
-  else {
-    MirrorLink.txTime = millis();
-    // Increase packetExchCtr value
-    MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-    if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-      plain[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
-    }
-    else {
-      // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
-      uint8_t rssi, snr;
-      if (MirrorLink.rssiLocal >= 0) {
-        if ((MirrorLink.rssiLocal / 2) > 127) {
-          rssi = (uint8_t)127;
-        }
-        else {
-          rssi = (uint8_t)(MirrorLink.rssiLocal / 2);
-        }
-      } 
-      else {
-        if ((MirrorLink.rssiLocal / 2) < -127) {
-          rssi = ((uint8_t)127 | 0x80);
-        }
-        else {
-          rssi = (((uint8_t)((MirrorLink.rssiLocal / 2) * -1)) | 0x80);
-        }
-      }
-
-      // Encode SNR to 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
-      if (MirrorLink.snrLocal >= 0) {
-        if ((MirrorLink.snrLocal / 2) > 127) {
-          snr = (uint8_t)127;
-        }
-        else {
-          snr = (uint8_t)(MirrorLink.snrLocal / 2);
-        }
-      } 
-      else {
-        if ((MirrorLink.snrLocal / 2) < -127) {
-          snr = ((uint8_t)127 | 0x80);
-        }
-        else {
-          snr = (((uint8_t)((MirrorLink.snrLocal / 2) * -1)) | 0x80);
-        }
-      }
-
-      plain[1] = (((uint32_t)(snr & 0xFF) << 24) | (((uint32_t)(rssi & 0xFF)) << 16) | ((uint32_t)(MirrorLink.command >> 16)));
-      MirrorLink.command = 0;
-    }
-  }
-
-  plain[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStatus) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
-
-  /*
-    byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
-                      0x89, 0xAB, 0xCD, 0xEF};
-    MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
-  */
-  // Encrypt message
-  MirrorLinkSpeckEncrypt(plain, buffer, MirrorLinkSpeckKeyExp);
-  byte byteArr[8] = {(byte)(0xFF & buffer[0] >> 24), (byte)(0xFF & buffer[0] >> 16), (byte)(0xFF & buffer[0] >> 8), (byte)(0xFF & buffer[0]), (byte)(0xFF & buffer[1] >> 24) , (byte)(0xFF & buffer[1] >> 16) , (byte)(0xFF & buffer[1] >> 8) , (byte)(0xFF & buffer[1])};
   MirrorLink.powerLevel = MirrorLinkPowerLevel();
   MirrorLink.moduleState = lora.setFrequency(MirrorLinkFreqs[MirrorLink.status.channelNumber]);
   MirrorLink.moduleState = lora.setOutputPower(MirrorLink.powerLevel);
-  MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
-
-  MLDEBUG_PRINT(F("Channel Number: "));
-  MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
-
-  // Update channel number for next transmission for the Remote
-  if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) MirrorLink.status.channelNumber = nextChannel;
-
-  MLDEBUG_PRINT(F("New Channel Number: "));
-  MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
-  
-  MirrorLink.status.flagRxTx = ML_TRANSMITTING;
-
-  if (MirrorLink.status.mirrorLinkStationType == ML_STATION) {
-    // For station, if not associated or change key process, update key and com. to normal
-    if (   (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_ASSOCIATION)
-        || (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
-      MLDEBUG_PRINTLN(F("Changing key"));
-      MirrorLink.key[3] = MirrorLink.key[1];
-      MirrorLink.key[2] = MirrorLink.key[0];
-      MirrorLink.key[1] = MirrorLink.associationKey[1];
-      MirrorLink.key[0] = MirrorLink.associationKey[0];
-      MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
-      // Change communication mode to normal
-      MirrorLink.status.comStatus = ML_LINK_COM_NORMAL;
-    }
+  MirrorLink.moduleState = lora.startTransmit(txArray, 8);
+  if (MirrorLink.moduleState == ERR_NONE) {
+    txStartSuccessful = true;
+    MirrorLink.txTime = millis();
   }
+  MirrorLink.status.flagRxTx = ML_TRANSMITTING;
+  return txStartSuccessful;
 }
 
-bool MirrorLinkReceiveStatus(void) {
+// void MirrorLinkTransmit2(void) {
+//   uint8_t nextChannel = 0;
+//   // Important! To enable transmit you need to switch the SX126x antenna switch to TRANSMIT
+//   enableTX();
+//   MLDEBUG_PRINTLN(F("[SX1262] Starting to transmit ... "));
+//   uint32_t plain[2] = {0, 0};
+//   uint32_t buffer[2] = {0, 0};
+
+//   // TODO: Too much spaguetti. Change for a state machine and simplify!!!
+
+//   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+//     // Send Power Level to station
+//     MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
+//     // If not associated
+//     // Reset to default key
+//     if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_ASSOCIATION) {
+//       MLDEBUG_PRINTLN(F("Resetting to default key"));
+//       MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
+//       MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
+//       MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
+//       MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
+//       MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
+//       MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+//     }
+//     else {
+//       // Send next channel to station
+//       if (MirrorLink.status.freqHopState == 1) {
+//         nextChannel = random(0, ML_CH_MAX);
+//       }
+//       else {
+//         nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+//       }
+//     }
+//   }
+
+//   // If not associated or change key process
+//   if (   (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_ASSOCIATION)
+//       || (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
+//     MirrorLink.txTime = millis();
+//     if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_ASSOCIATION) MirrorLink.associationAttempts++;
+//     if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+//       // Initialized packetExchCtr with random number
+//       if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_ASSOCIATION) {
+//         MirrorLink.packetExchCtr = random(16383);
+//         // Request always the maximum allowed transmit power when in association
+
+//       }
+//       else {
+//         MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+//       }
+//       // Generate first part of future random key for the link
+//       MirrorLink.associationKey[0] = (uint32_t)random(INT32_MAX);
+//       plain[1] = MirrorLink.associationKey[0];
+//     }
+//     else {
+//       // Increase packetExchCtr value
+//       MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+//       // Generate second part of future random key for the link
+//       MirrorLink.associationKey[1] = (uint32_t)random(INT32_MAX);
+//       plain[1] = MirrorLink.associationKey[1];
+//     }
+//   }
+//   // Else if mode is normal
+//   else {
+//     MirrorLink.txTime = millis();
+//     // Increase packetExchCtr value
+//     MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+//     if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+//       plain[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
+//     }
+//     else {
+//       // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
+//       uint8_t rssi, snr;
+//       if (MirrorLink.rssiLocal >= 0) {
+//         if ((MirrorLink.rssiLocal / 2) > 127) {
+//           rssi = (uint8_t)127;
+//         }
+//         else {
+//           rssi = (uint8_t)(MirrorLink.rssiLocal / 2);
+//         }
+//       } 
+//       else {
+//         if ((MirrorLink.rssiLocal / 2) < -127) {
+//           rssi = ((uint8_t)127 | 0x80);
+//         }
+//         else {
+//           rssi = (((uint8_t)((MirrorLink.rssiLocal / 2) * -1)) | 0x80);
+//         }
+//       }
+
+//       // Encode SNR to 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
+//       if (MirrorLink.snrLocal >= 0) {
+//         if ((MirrorLink.snrLocal / 2) > 127) {
+//           snr = (uint8_t)127;
+//         }
+//         else {
+//           snr = (uint8_t)(MirrorLink.snrLocal / 2);
+//         }
+//       } 
+//       else {
+//         if ((MirrorLink.snrLocal / 2) < -127) {
+//           snr = ((uint8_t)127 | 0x80);
+//         }
+//         else {
+//           snr = (((uint8_t)((MirrorLink.snrLocal / 2) * -1)) | 0x80);
+//         }
+//       }
+
+//       plain[1] = (((uint32_t)(snr & 0xFF) << 24) | (((uint32_t)(rssi & 0xFF)) << 16) | ((uint32_t)(MirrorLink.command >> 16)));
+//       MirrorLink.command = 0;
+//     }
+//   }
+
+//   plain[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+
+//   /*
+//     byte byteArr[] = {0x01, 0x23, 0x45, 0x67,
+//                       0x89, 0xAB, 0xCD, 0xEF};
+//     MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
+//   */
+//   // Encrypt message
+//   MirrorLinkSpeckEncrypt(plain, buffer, MirrorLinkSpeckKeyExp);
+//   byte byteArr[8] = {(byte)(0xFF & buffer[0] >> 24), (byte)(0xFF & buffer[0] >> 16), (byte)(0xFF & buffer[0] >> 8), (byte)(0xFF & buffer[0]), (byte)(0xFF & buffer[1] >> 24) , (byte)(0xFF & buffer[1] >> 16) , (byte)(0xFF & buffer[1] >> 8) , (byte)(0xFF & buffer[1])};
+//   MirrorLink.powerLevel = MirrorLinkPowerLevel();
+//   MirrorLink.moduleState = lora.setFrequency(MirrorLinkFreqs[MirrorLink.status.channelNumber]);
+//   MirrorLink.moduleState = lora.setOutputPower(MirrorLink.powerLevel);
+//   MirrorLink.moduleState = lora.startTransmit(byteArr, 8);
+
+//   MLDEBUG_PRINT(F("Channel Number: "));
+//   MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
+
+//   // Update channel number for next transmission for the Remote
+//   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) MirrorLink.status.channelNumber = nextChannel;
+
+//   MLDEBUG_PRINT(F("New Channel Number: "));
+//   MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
+  
+//   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
+
+//   if (MirrorLink.status.mirrorLinkStationType == ML_STATION) {
+//     // For station, if not associated or change key process, update key and com. to normal
+//     if (   (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_ASSOCIATION)
+//         || (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_CHANGEKEY) ) {
+//       MLDEBUG_PRINTLN(F("Changing key"));
+//       MirrorLink.key[3] = MirrorLink.key[1];
+//       MirrorLink.key[2] = MirrorLink.key[0];
+//       MirrorLink.key[1] = MirrorLink.associationKey[1];
+//       MirrorLink.key[0] = MirrorLink.associationKey[0];
+//       MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
+//       // Change communication mode to normal
+//       MirrorLink.status.comStationState = ML_LINK_COM_NORMAL;
+//     }
+//   }
+// }
+
+bool MirrorLinkReceive(byte *rxArray) {
   bool rxSuccessful = false;
-  // check if the flag is set
   if(MirrorLink.status.receivedFlag) {
     // Increase reception counter
     MirrorLink.packetsReceived++;
@@ -1171,98 +1186,14 @@ bool MirrorLinkReceiveStatus(void) {
     MirrorLink.status.receivedFlag = (uint16_t)false;
 
     // Read received data as byte array
-    byte byteArr[8];
-    MirrorLink.moduleState = lora.readData(byteArr, 8);
+    MirrorLink.moduleState = lora.readData(rxArray, MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH);
 
-    // Message decryption
-    uint32_t encoded[2] = {0, 0};
-    uint32_t buffer[2] = {0, 0};
-    encoded[0] = (((uint32_t)(byteArr[0]) << 24) | ((uint32_t)(byteArr[1]) << 16) | ((uint32_t)(byteArr[2]) << 8) | ((uint32_t)(byteArr[3])));
-    encoded[1] = (((uint32_t)(byteArr[4]) << 24) | ((uint32_t)(byteArr[5]) << 16) | ((uint32_t)(byteArr[6]) << 8) | ((uint32_t)(byteArr[7])));
-    MirrorLinkSpeckDecrypt(encoded, buffer, MirrorLinkSpeckKeyExp);
-
-    // Network ID match flag
-    bool networkIdMatch = (bool)(MirrorLink.status.networkId == (0xFF & (buffer[0] >> 24)));
-
-    // Packet Exchange Control Match flag
-    bool packetExchCtrMatch = (bool)((buffer[0] & 0x3FFF) == (MirrorLink.packetExchCtr + 1));
-
-    // If reception and decryption successful
-    if (  (MirrorLink.moduleState == ERR_NONE)
-        &&(networkIdMatch)
-        &&(packetExchCtrMatch) ) {
-      // Increase packetExchCtr value
-      MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-      MirrorLink.status.comStatus = ((buffer[0] & 0xC00000) >> 22);
-      if (   (MirrorLink.status.mirrorLinkStationType == ML_REMOTE)
-          && (   (MirrorLink.status.comStatus == ML_LINK_COM_ASSOCIATION) 
-              || (MirrorLink.status.comStatus == ML_LINK_COM_CHANGEKEY))) {
-
-        // Update second part of the key and update decryption key
-        MLDEBUG_PRINTLN(F("Changing key"));
-
-        MirrorLink.associationKey[1] = buffer[1];
-        MirrorLink.key[3] = MirrorLink.key[1];
-        MirrorLink.key[2] = MirrorLink.key[0];
-        MirrorLink.key[1] = MirrorLink.associationKey[1];
-        MirrorLink.key[0] = MirrorLink.associationKey[0];
-        MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
-        // Change communication mode to normal
-        MirrorLink.status.comStatus = ML_LINK_COM_NORMAL;
-      }
-      else if (   (MirrorLink.status.mirrorLinkStationType == ML_STATION)
-               && (MirrorLink.status.comStatus == ML_LINK_COM_CHANGEKEY)) {
-        MirrorLink.status.powerCmd = ((buffer[0] & 0x3C0000) >> 18);
-        MirrorLink.status.channelNumber = ((buffer[0] & 0x3C000) >> 14);
-        // Update first part of the key
-        MirrorLink.associationKey[0] = buffer[1];
-      }
-      else {
-        if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-          MirrorLink.response = (uint32_t)buffer[1] << 16;
-          // Gather SNR and RSSI from station
-          // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
-          MirrorLink.rssiRemote = (int16_t)((buffer[1] & 0x7F0000) >> 16);
-          if (buffer[1] & 0x800000) {
-            MirrorLink.rssiRemote *= -1;
-          }
-          MirrorLink.rssiRemote *= 2;
-
-          // Decode SNR from 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
-          MirrorLink.snrRemote = (int16_t)((buffer[1] & 0x7F000000) >> 24);
-
-          if (buffer[1] & 0x80000000) {
-            MirrorLink.snrRemote *= -1;
-          }
-          MirrorLink.snrRemote *= 2;
-
-          // Diagnostics
-          // If response command different than last command sent then report error
-          if ((MirrorLink.response >> 27) != (MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27)) {
-            MLDEBUG_PRINTLN(F("Station response does not match command sent!"));
-          }
-        }
-        else {
-          MirrorLink.status.powerCmd = ((buffer[0] & 0x3C0000) >> 18);
-          MirrorLink.status.channelNumber = ((buffer[0] & 0x3C000) >> 14);
-          MirrorLink.command = (uint32_t)buffer[1];
-          MLDEBUG_PRINT(F("Channel received:\t\t"));
-          MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
-          MLDEBUG_PRINT(F("PowerCMD received:\t\t"));
-          MLDEBUG_PRINTLN(MirrorLink.status.powerCmd);
-        }
-      }
+    // If reception successful
+    if (MirrorLink.moduleState == ERR_NONE) {
+      rxSuccessful = true;
       // packet was successfully received
       MLDEBUG_PRINTLN(F("[SX1262] Received packet!"));
 
-      // print data of the packet
-      MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
-      if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-        MLDEBUG_PRINTLN(MirrorLink.response);
-      }
-      else {
-        MLDEBUG_PRINTLN(MirrorLink.command);
-      }
       float signal;
       // print RSSI (Received Signal Strength Indicator)
       signal = lora.getRSSI();
@@ -1277,9 +1208,7 @@ bool MirrorLinkReceiveStatus(void) {
       MLDEBUG_PRINT(signal);
       MLDEBUG_PRINTLN(F(" dB"));
       MirrorLink.snrLocal = (int16_t)(signal * 10);
-      
-      rxSuccessful = true;
-    } 
+    }
     else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
       MLDEBUG_PRINTLN(F("CRC error!"));
@@ -1289,68 +1218,300 @@ bool MirrorLinkReceiveStatus(void) {
       MLDEBUG_PRINT(F("failed, code "));
       MLDEBUG_PRINTLN(MirrorLink.moduleState);
     }
-    else {
-      if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-        // Change communication mode to Association
-        MirrorLink.status.comStatus = ML_LINK_COM_ASSOCIATION;
-      }
-      else {
-        MLDEBUG_PRINTLN(F("Resetting to default key"));
-        // Check if it is an association packet
-        MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
-        MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
-        MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
-        MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
-        MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
-        MirrorLinkSpeckDecrypt(encoded, buffer, MirrorLinkSpeckKeyExp);
-
-        // Network ID match flag
-        networkIdMatch = (bool)(MirrorLink.status.networkId == (0xFF & (buffer[0] >> 24)));
-
-        if (  (MirrorLink.moduleState == ERR_NONE)
-            &&(networkIdMatch) ) {
-          rxSuccessful = true;
-          MirrorLink.packetExchCtr = ((buffer[0] & 0x3FFF) % 16383);
-          MirrorLink.status.comStatus = ((buffer[0] & 0xC00000) >> 22);
-          MirrorLink.status.powerCmd = ((buffer[0] & 0x3C0000) >> 18);
-          MirrorLink.status.channelNumber = ((buffer[0] & 0x3C000) >> 14);
-          MirrorLink.associationKey[0] = buffer[1];
-
-          float signal;
-          // print RSSI (Received Signal Strength Indicator)
-          signal = lora.getRSSI();
-          MLDEBUG_PRINT(F("[SX1262] RSSI:\t\t"));
-          MLDEBUG_PRINT(signal);
-          MLDEBUG_PRINTLN(F(" dBm"));
-          MirrorLink.rssiLocal = (int16_t)signal;
-
-          signal = lora.getSNR();
-          // print SNR (Signal-to-Noise Ratio)
-          MLDEBUG_PRINT(F("[SX1262] SNR:\t\t"));
-          MLDEBUG_PRINT(signal);
-          MLDEBUG_PRINTLN(F(" dB"));
-          MirrorLink.snrLocal = (int16_t)(signal * 10);
-          
-          rxSuccessful = true;
-        }
-        else {
-          // packet was received, but Network ID mismatch
-          MLDEBUG_PRINTLN(F("Network ID mismatch!"));
-          // Change communication mode to association
-          MirrorLink.status.comStatus = ML_LINK_COM_ASSOCIATION;
-        }
-      }
-    }
 
     // put module back to listen mode
     lora.startReceive();
+
+    // Set flagRxTx to reception
+    MirrorLink.status.flagRxTx = (uint32_t)ML_RECEIVING;
 
     // we're ready to receive more packets,
     // enable interrupt service routine
     MirrorLink.status.enableInterrupt = (uint16_t)true;
   }
+
   return rxSuccessful;
 }
+
+void MirrorLinkEncryptMessage(byte *txArray, uint32_t *plainBuffer, uint32_t *encryptionKey) {
+  // Message encryption
+  uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN] = {0, 0};
+  MirrorLinkSpeckEncrypt(plainBuffer, encryptedBuffer, encryptionKey);
+  txArray[0] = (byte)(0xFF & encryptedBuffer[0] >> 24);
+  txArray[1] = (byte)(0xFF & encryptedBuffer[0] >> 16);
+  txArray[2] = (byte)(0xFF & encryptedBuffer[0] >> 8);
+  txArray[3] = (byte)(0xFF & encryptedBuffer[0]);
+  txArray[4] = (byte)(0xFF & encryptedBuffer[1] >> 24);
+  txArray[5] = (byte)(0xFF & encryptedBuffer[1] >> 16);
+  txArray[6] = (byte)(0xFF & encryptedBuffer[1] >> 8);
+  txArray[7] = (byte)(0xFF & encryptedBuffer[1]);
+}
+
+void MirrorLinkDecryptMessage(byte *rxArray, uint32_t *decryptedBuffer, uint32_t *decryptionKey) {
+  // Message decryption
+  uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN] = {0, 0};
+  encryptedBuffer[0] = (((uint32_t)(rxArray[0]) << 24) | ((uint32_t)(rxArray[1]) << 16) | ((uint32_t)(rxArray[2]) << 8) | ((uint32_t)(rxArray[3])));
+  encryptedBuffer[1] = (((uint32_t)(rxArray[4]) << 24) | ((uint32_t)(rxArray[5]) << 16) | ((uint32_t)(rxArray[6]) << 8) | ((uint32_t)(rxArray[7])));
+  MirrorLinkSpeckDecrypt(encryptedBuffer, decryptedBuffer, decryptionKey);
+}
+
+bool MirrorLinkCheckDecryptedMessage(uint32_t *decryptedBuffer) {
+  bool decryptedSuccessful = false;
+  bool networkIdMatch = false;
+
+  // Network ID match flag
+  networkIdMatch = (bool)(MirrorLink.status.networkId == (0xFF & (decryptedBuffer[0] >> 24)));
+
+  // If reception and decryption successful
+  if (  (MirrorLink.moduleState == ERR_NONE)
+      &&(networkIdMatch) ) {
+    decryptedSuccessful = true;
+  }
+  else {
+    if (MirrorLink.moduleState != ERR_NONE) {
+      // packet was received, but there was an issue in reception
+      MLDEBUG_PRINTLN(F("Reception error!"));
+    }
+    else {
+      // packet was received, but Network ID mismatch
+      MLDEBUG_PRINTLN(F("Network ID mismatch!"));
+      MLDEBUG_PRINTLN(MirrorLink.status.networkId);
+      MLDEBUG_PRINTLN(0xFF & (decryptedBuffer[0] >> 24));
+    }
+  }
+
+  return decryptedSuccessful;
+}
+
+bool MirrorLinkCheckPacketNumber(uint32_t *decryptedBuffer) {
+  bool packetExchCtrMatch = false;
+
+  // Packet Exchange Control Match flag
+  packetExchCtrMatch = (bool)((decryptedBuffer[0] & 0x3FFF) == (MirrorLink.packetExchCtr + 1));
+
+  // If reception and decryption successful
+  if (!packetExchCtrMatch) {
+    // packet was received, but Network ID mismatch
+    MLDEBUG_PRINTLN(F("Packet Number mismatch!"));
+    MLDEBUG_PRINTLN(decryptedBuffer[0] & 0x3FFF);
+    MLDEBUG_PRINTLN(MirrorLink.packetExchCtr + 1);
+  }
+
+  return packetExchCtrMatch;
+}
+
+void MirrorLinkResetToDefaultKey(uint32_t *decryptionKey) {
+  MLDEBUG_PRINTLN(F("Resetting to default key"));
+  decryptionKey[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
+  decryptionKey[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
+  decryptionKey[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
+  decryptionKey[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
+  MirrorLinkSpeckKeySchedule(decryptionKey, MirrorLinkSpeckKeyExp);
+}
+
+void MirrorLinkUpdateEncryptionKey(uint32_t *encryptionKey, uint32_t *associationKey) {
+  MLDEBUG_PRINTLN(F("Updating encryption key"));
+  MirrorLink.key[3] = MirrorLink.key[1];
+  MirrorLink.key[2] = MirrorLink.key[0];
+  MirrorLink.key[1] = associationKey[1];
+  MirrorLink.key[0] = associationKey[0];
+  MirrorLinkSpeckKeySchedule(MirrorLink.key, encryptionKey);
+}
+
+// bool MirrorLinkReceiveStatus2(void) {
+//   bool rxSuccessful = false;
+//   // check if the flag is set
+//   if (MirrorLink.status.receivedFlag) {
+//     // Increase reception counter
+//     MirrorLink.packetsReceived++;
+
+//     // disable the interrupt service routine while
+//     // processing the data
+//     MirrorLink.status.enableInterrupt = (uint16_t)false;
+
+//     // Reset flag
+//     MirrorLink.status.receivedFlag = (uint16_t)false;
+
+//     // Read received data as byte array
+//     byte byteArr[8];
+//     MirrorLink.moduleState = lora.readData(byteArr, 8);
+
+//     // Message decryption
+//     uint32_t encoded[2] = {0, 0};
+//     uint32_t buffer[2] = {0, 0};
+//     encoded[0] = (((uint32_t)(byteArr[0]) << 24) | ((uint32_t)(byteArr[1]) << 16) | ((uint32_t)(byteArr[2]) << 8) | ((uint32_t)(byteArr[3])));
+//     encoded[1] = (((uint32_t)(byteArr[4]) << 24) | ((uint32_t)(byteArr[5]) << 16) | ((uint32_t)(byteArr[6]) << 8) | ((uint32_t)(byteArr[7])));
+//     MirrorLinkSpeckDecrypt(encoded, buffer, MirrorLinkSpeckKeyExp);
+
+//     // Network ID match flag
+//     bool networkIdMatch = (bool)(MirrorLink.status.networkId == (0xFF & (buffer[0] >> 24)));
+
+//     // Packet Exchange Control Match flag
+//     bool packetExchCtrMatch = (bool)((buffer[0] & 0x3FFF) == (MirrorLink.packetExchCtr + 1));
+
+//     // If reception and decryption successful
+//     if (  (MirrorLink.moduleState == ERR_NONE)
+//         &&(networkIdMatch)
+//         &&(packetExchCtrMatch) ) {
+//       // Increase packetExchCtr value
+//       MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+//       MirrorLink.status.comStationState = ((buffer[0] & 0xC00000) >> 22);
+//       if (   (MirrorLink.status.mirrorLinkStationType == ML_REMOTE)
+//           && (   (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION) 
+//               || (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY))) {
+
+//         // Update second part of the key and update decryption key
+//         MLDEBUG_PRINTLN(F("Changing key"));
+
+//         MirrorLink.associationKey[1] = buffer[1];
+//         MirrorLink.key[3] = MirrorLink.key[1];
+//         MirrorLink.key[2] = MirrorLink.key[0];
+//         MirrorLink.key[1] = MirrorLink.associationKey[1];
+//         MirrorLink.key[0] = MirrorLink.associationKey[0];
+//         MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
+//         // Change communication mode to normal
+//         MirrorLink.status.comStationState = ML_LINK_COM_NORMAL;
+//       }
+//       else if (   (MirrorLink.status.mirrorLinkStationType == ML_STATION)
+//                && (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY)) {
+//         MirrorLink.status.powerCmd = ((buffer[0] & 0x3C0000) >> 18);
+//         MirrorLink.status.channelNumber = ((buffer[0] & 0x3C000) >> 14);
+//         // Update first part of the key
+//         MirrorLink.associationKey[0] = buffer[1];
+//       }
+//       else {
+//         if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+//           MirrorLink.response = (uint32_t)buffer[1] << 16;
+//           // Gather SNR and RSSI from station
+//           // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
+//           MirrorLink.rssiRemote = (int16_t)((buffer[1] & 0x7F0000) >> 16);
+//           if (buffer[1] & 0x800000) {
+//             MirrorLink.rssiRemote *= -1;
+//           }
+//           MirrorLink.rssiRemote *= 2;
+
+//           // Decode SNR from 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
+//           MirrorLink.snrRemote = (int16_t)((buffer[1] & 0x7F000000) >> 24);
+
+//           if (buffer[1] & 0x80000000) {
+//             MirrorLink.snrRemote *= -1;
+//           }
+//           MirrorLink.snrRemote *= 2;
+
+//           // Diagnostics
+//           // If response command different than last command sent then report error
+//           if ((MirrorLink.response >> 27) != (MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27)) {
+//             MLDEBUG_PRINTLN(F("Station response does not match command sent!"));
+//           }
+//         }
+//         else {
+//           MirrorLink.status.powerCmd = ((buffer[0] & 0x3C0000) >> 18);
+//           MirrorLink.status.channelNumber = ((buffer[0] & 0x3C000) >> 14);
+//           MirrorLink.command = (uint32_t)buffer[1];
+//           MLDEBUG_PRINT(F("Channel received:\t\t"));
+//           MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
+//           MLDEBUG_PRINT(F("PowerCMD received:\t\t"));
+//           MLDEBUG_PRINTLN(MirrorLink.status.powerCmd);
+//         }
+//       }
+//       // packet was successfully received
+//       MLDEBUG_PRINTLN(F("[SX1262] Received packet!"));
+
+//       // print data of the packet
+//       MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
+//       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+//         MLDEBUG_PRINTLN(MirrorLink.response);
+//       }
+//       else {
+//         MLDEBUG_PRINTLN(MirrorLink.command);
+//       }
+//       float signal;
+//       // print RSSI (Received Signal Strength Indicator)
+//       signal = lora.getRSSI();
+//       MLDEBUG_PRINT(F("[SX1262] RSSI:\t\t"));
+//       MLDEBUG_PRINT(signal);
+//       MLDEBUG_PRINTLN(F(" dBm"));
+//       MirrorLink.rssiLocal = (int16_t)signal;
+
+//       signal = lora.getSNR();
+//       // print SNR (Signal-to-Noise Ratio)
+//       MLDEBUG_PRINT(F("[SX1262] SNR:\t\t"));
+//       MLDEBUG_PRINT(signal);
+//       MLDEBUG_PRINTLN(F(" dB"));
+//       MirrorLink.snrLocal = (int16_t)(signal * 10);
+      
+//       rxSuccessful = true;
+//     } 
+//     else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
+//       // packet was received, but is malformed
+//       MLDEBUG_PRINTLN(F("CRC error!"));
+//     }
+//     else if (MirrorLink.moduleState != ERR_NONE) {
+//       // some other error occurred
+//       MLDEBUG_PRINT(F("failed, code "));
+//       MLDEBUG_PRINTLN(MirrorLink.moduleState);
+//     }
+//     else {
+//       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+//         // Change communication mode to Association
+//         MirrorLink.status.comStationState = ML_LINK_COM_ASSOCIATION;
+//       }
+//       else {
+//         MLDEBUG_PRINTLN(F("Resetting to default key"));
+//         // Check if it is an association packet
+//         MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
+//         MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
+//         MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
+//         MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
+//         MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
+//         MirrorLinkSpeckDecrypt(encoded, buffer, MirrorLinkSpeckKeyExp);
+
+//         // Network ID match flag
+//         networkIdMatch = (bool)(MirrorLink.status.networkId == (0xFF & (buffer[0] >> 24)));
+
+//         if (  (MirrorLink.moduleState == ERR_NONE)
+//             &&(networkIdMatch) ) {
+//           MirrorLink.packetExchCtr = ((buffer[0] & 0x3FFF) % 16383);
+//           MirrorLink.status.comStationState = ((buffer[0] & 0xC00000) >> 22);
+//           MirrorLink.status.powerCmd = ((buffer[0] & 0x3C0000) >> 18);
+//           MirrorLink.status.channelNumber = ((buffer[0] & 0x3C000) >> 14);
+//           MirrorLink.associationKey[0] = buffer[1];
+
+//           float signal;
+//           // print RSSI (Received Signal Strength Indicator)
+//           signal = lora.getRSSI();
+//           MLDEBUG_PRINT(F("[SX1262] RSSI:\t\t"));
+//           MLDEBUG_PRINT(signal);
+//           MLDEBUG_PRINTLN(F(" dBm"));
+//           MirrorLink.rssiLocal = (int16_t)signal;
+
+//           signal = lora.getSNR();
+//           // print SNR (Signal-to-Noise Ratio)
+//           MLDEBUG_PRINT(F("[SX1262] SNR:\t\t"));
+//           MLDEBUG_PRINT(signal);
+//           MLDEBUG_PRINTLN(F(" dB"));
+//           MirrorLink.snrLocal = (int16_t)(signal * 10);
+          
+//           rxSuccessful = true;
+//         }
+//         else {
+//           // packet was received, but Network ID mismatch
+//           MLDEBUG_PRINTLN(F("Network ID mismatch!"));
+//           // Change communication mode to association
+//           MirrorLink.status.comStationState = ML_LINK_COM_ASSOCIATION;
+//         }
+//       }
+//     }
+
+//     // put module back to listen mode
+//     lora.startReceive();
+
+//     // we're ready to receive more packets,
+//     // enable interrupt service routine
+//     MirrorLink.status.enableInterrupt = (uint16_t)true;
+//   }
+//   return rxSuccessful;
+// }
 
 void MirrorLinkReceiveInit(void) {
   // Important! To enable receive you need to switch the SX126x antenna switch to RECEIVE 
@@ -1379,8 +1540,8 @@ void MirrorLinkStayAliveControl(void) {
       if (os.now_tz() > MirrorLink.stayAliveTimer) {
         // Disable system
         os.disable();
+        // Set default channel
         MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-        MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
         // MirrorLink status down
         MirrorLink.status.link = ML_LINK_DOWN;
       }
@@ -1404,7 +1565,7 @@ void MirrorLinkState(void) {
     case MIRRORLINK_INIT:
       MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_INIT"));
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-        if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
+        if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_NORMAL) {
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
           MirrorLink.sendTimer = os.now_tz();
@@ -1416,7 +1577,7 @@ void MirrorLinkState(void) {
         }
       }
       else {
-        if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
+        if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_NORMAL) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLinkReceiveInit();
@@ -1433,38 +1594,64 @@ void MirrorLinkState(void) {
     case MIRRORLINK_ASSOCIATE:
     // Key-renewval state 
     case MIRRORLINK_KEYRENEWVAL:
+      // Remote
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+        byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+        uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
         // Wait for associating answer
-        if (MirrorLinkReceiveStatus() == true) {
-          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
-          MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
-          // Calculate transmission-free time based on duty cycle and time of last message
-          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-          // Update Link status
-          MirrorLink.status.link = ML_LINK_UP;
+        if (MirrorLinkReceive(rxArray) == true) {
+          bool packetOk = false;
+          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          // If in keyrenewval check as well correctness of packet number
+          packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
+          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_KEYRENEWVAL) packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
+          if (packetOk == true) {
+            // Increase packetExchCtr value
+            MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+
+            // Update second part of the key and update decryption key
+            MirrorLink.associationKey[1] = decryptedBuffer[1];
+
+            // Update decryption key (TODO: Change to initizalization vector)
+            MirrorLinkUpdateEncryptionKey(MirrorLinkSpeckKeyExp, MirrorLink.associationKey);
+
+            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
+            MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+            // Calculate transmission-free time based on duty cycle and time of last message
+            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+            
+            // Update Link status
+            MirrorLink.status.comStationState = ML_LINK_COM_NORMAL;
+            MirrorLink.status.link = ML_LINK_UP;
+          }
         }
         // If timeout and key renewal has been attempted
         else if (  (MirrorLink.sendTimer <= os.now_tz())
                  && (MirrorLink.status.mirrorlinkState == MIRRORLINK_KEYRENEWVAL)
                  && (MirrorLink.status.keyRenewalTriedFlag == 1) ) {
-          // Make sure we are in association mode
-          MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
+          // Make sure we send an association command to station
+          MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+          MirrorLinkResetToDefaultKey(MirrorLinkSpeckKeyExp);
           MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+          MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
           // Update Link status
           MirrorLink.status.link = ML_LINK_DOWN;
         }
       }
+      // Station
       else {
-        if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
-          if (MirrorLinkTransmitStatus() == true) {
-            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
-            MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
-            MirrorLinkReceiveInit();
-            // Update Link status
-            MirrorLink.status.link = ML_LINK_UP;
-          }
+        // If answer to association/renewval sent correctly
+        // Change state to receive
+        if (MirrorLinkTransmitStatus() == true) {
+          // Update decryption key (TODO: Change to initizalization vector)
+          MirrorLinkUpdateEncryptionKey(MirrorLinkSpeckKeyExp, MirrorLink.associationKey);
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
+          MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+          MirrorLinkReceiveInit();
+          // Update Link status
+          MirrorLink.status.link = ML_LINK_UP;
         }
       }
       break;
@@ -1473,17 +1660,43 @@ void MirrorLinkState(void) {
       // If timer to be able to use the channel again is overdue
       if (MirrorLink.sendTimer <= os.now_tz()) {
         // If Key Renewal timer to be able to use the channel again is overdue
+        byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+        uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+        uint8_t nextChannel = 0;
         if (MirrorLink.keyRenewalTimer <= os.now_tz()) {
           MirrorLink.status.keyRenewalTriedFlag = 0;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_KEYRENEWVAL"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
           // Trigger a change of keys
-          MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_CHANGEKEY;
+          MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_CHANGEKEY;
           // Reset key renewal timer
           MirrorLink.keyRenewalTimer = os.now_tz() + (time_t)random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
-          // Start the transmission
-          MirrorLinkTransmit();
+
+          // Process header
+          MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
+          // Send next channel to station
+          if (MirrorLink.status.freqHopState == 1) {
+            nextChannel = random(0, ML_CH_MAX);
+          }
+          else {
+            nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+          }
+          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+          
+          // Process payload
+          // Generate first part of future random key for the link
+          MirrorLink.associationKey[0] = (uint32_t)random(INT32_MAX);
+          plainBuffer[1] = MirrorLink.associationKey[0];
+
+          // Encrypt plain message
+          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+
+          // Send encrypted message
+          MirrorLinkTransmit(txArray);
+
+          MirrorLink.status.channelNumber = nextChannel;
         }
         // If buffer not empty
         // change state to send
@@ -1491,7 +1704,30 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_SEND"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          MirrorLinkTransmit();
+
+          // Process header
+          MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
+          // Send next channel to station
+          if (MirrorLink.status.freqHopState == 1) {
+            nextChannel = random(0, ML_CH_MAX);
+          }
+          else {
+            nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+          }
+          // Increase packetExchCtr value
+          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+
+          // Process payload -> Nothing to do
+          plainBuffer[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
+
+          // Encrypt plain message
+          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+
+          // Send encrypted message
+          MirrorLinkTransmit(txArray);
+
+          MirrorLink.status.channelNumber = nextChannel;
         }
       }
       break;
@@ -1528,38 +1764,108 @@ void MirrorLinkState(void) {
       break;
     // Receive state
     case MIRRORLINK_RECEIVE:
+      // Remote
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
+        byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+        uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
         // If confirmation of buffer commands received
         // change state to Buffering
-        if (MirrorLinkReceiveStatus() == true) {
-          
-          // Response payload format
-          // bit 16 to 22 = Number of active SID's (for diagnostic check) --> TODO!
-          // bit 23 to 26 = Error bits
-          // bit 27 to 31 = cmd
+        if (MirrorLinkReceive(rxArray) == true) {
+          bool packetOk = false;
+          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
+          packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
+          if (packetOk == true) {
+            // Process header
+            // Increase packetExchCtr value
+            MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+            
+            MirrorLink.response = (uint32_t)decryptedBuffer[1] << 16;
+            // Gather SNR and RSSI from station
+            // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
+            MirrorLink.rssiRemote = (int16_t)((decryptedBuffer[1] & 0x7F0000) >> 16);
+            if (decryptedBuffer[1] & 0x800000) {
+              MirrorLink.rssiRemote *= -1;
+            }
+            MirrorLink.rssiRemote *= 2;
 
-          // In case response shows a sync error between remote and station
-          // delete all programs and reset response
-          if (((MirrorLink.response >> 23) & 0xF) == ML_SYNCERROR) {
-            delete_program_data(-1);
-            MLDEBUG_PRINTLN(F("Sync error with remote, reset program data!"));
+            // Decode SNR from 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
+            MirrorLink.snrRemote = (int16_t)((decryptedBuffer[1] & 0x7F000000) >> 24);
+
+            if (decryptedBuffer[1] & 0x80000000) {
+              MirrorLink.snrRemote *= -1;
+            }
+            MirrorLink.snrRemote *= 2;
+
+            // Diagnostics
+            // If response command different than last command sent then report error
+            if ((MirrorLink.response >> 27) != (MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27)) {
+              MLDEBUG_PRINTLN(F("Station response does not match command sent!"));
+              MLDEBUG_PRINTLN(MirrorLink.response);
+              MLDEBUG_PRINTLN(MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27);
+            }
+
+            // print data of the packet
+            MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
+            MLDEBUG_PRINTLN(MirrorLink.response);
+
+            // Process payload
+            // Response payload format
+            // bit 16 to 22 = Number of active SID's (for diagnostic check) --> TODO!
+            // bit 23 to 26 = Error bits
+            // bit 27 to 31 = cmd
+
+            // In case response shows a sync error between remote and station
+            // delete all programs and reset response
+            if (((MirrorLink.response >> 23) & 0xF) == ML_SYNCERROR) {
+              delete_program_data(-1);
+              MLDEBUG_PRINTLN(F("Sync error with remote, reset program data!"));
+            }
+
+            // Report command sent
+            if (MirrorLink.bufferedCommands > 0) {
+              MirrorLink.bufferedCommands--;
+              MirrorLink.indexBufferTail = (MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH;
+            }
+            
+            MirrorLink.response = 0;
+            MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
+            MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
+            // Calculate transmission-free time based on duty cycle and time of last message
+            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+
+            // Update Link status
+            MirrorLink.status.link = ML_LINK_UP;
           }
+          // Else if command received but not propertly decrypted go to association mode
+          else {
+            // Report error
+            MLDEBUG_PRINTLN(F("Packet decryption failed!"));
 
-          // Report command sent
-          if (MirrorLink.bufferedCommands > 0) {
-            MirrorLink.bufferedCommands--;
-            MirrorLink.indexBufferTail = (MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH;
+            // Command is lost, do not retry
+            if (MirrorLink.bufferedCommands > 0) {
+              MirrorLink.bufferedCommands--;
+              (MirrorLink.indexBufferTail++) % MIRRORLINK_BUFFERLENGTH;
+            }
+            
+            MirrorLink.response = 0;
+            MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
+            MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+            MirrorLinkResetToDefaultKey(MirrorLinkSpeckKeyExp);
+            MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            // Calculate transmission-free time based on duty cycle and time of last message
+            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+
+            // Update Link status
+            MirrorLink.status.link = ML_LINK_DOWN;
+            MirrorLink.snrRemote = -200;
+            MirrorLink.rssiRemote = -200;
+
+            // Request change state to association for station
+            MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
           }
-          
-          MirrorLink.response = 0;
-          MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
-          MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
-          // Calculate transmission-free time based on duty cycle and time of last message
-          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-
-          // Update Link status
-          MirrorLink.status.link = ML_LINK_UP;
         }
 
         // If timeout
@@ -1579,6 +1885,7 @@ void MirrorLinkState(void) {
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+          MirrorLinkResetToDefaultKey(MirrorLinkSpeckKeyExp);
           MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
@@ -1588,290 +1895,346 @@ void MirrorLinkState(void) {
           MirrorLink.snrRemote = -200;
           MirrorLink.rssiRemote = -200;
 
-          // Start association process
-          MirrorLink.status.comStatus = (uint32_t)ML_LINK_COM_ASSOCIATION;
+          // Request change state to association for station
+          MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
         }
       }
+      // Station
       else {
+        byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+        uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
         // If commands received
         // execute and change state to Send
-        if (MirrorLinkReceiveStatus() == true) {
-          if (MirrorLink.status.comStatus == (uint32_t)ML_LINK_COM_NORMAL) {
-            uint32_t payload = 0;
-            byte sid = 0;
-            int16_t pid = 0;
-            uint8_t en = 0;
-            uint16_t timer = 0;
-            uint8_t stTimeNum = 0;
-            uint16_t duration = 0;
-            uint8_t usw = 0;
-            uint8_t oddeven = 0;
-            uint8_t addProg = 0;
-            char * latitude;
-            char * longitude;
-            const float weight = 180./(1 << 23);
-            if (MirrorLink.command != 0) {
-              // Execute command
-              switch (MirrorLink.command >> 27) {
-                // Initial state
-                case ML_TESTSTATION:
-                  // Message format: 
-                  // bit 0 = status (1 = On, 0 = Off)
-                  // bit 1 to 8 = sid
-                  // bit 9 to 24 = time(sec)
-                  // bit 25 to 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
-                  sid = (byte) (0xFF & (payload >> 1));
-                  en = (uint8_t) (payload & 0x1);
-                  timer = (uint16_t) ((0xFFFF) & (payload >> 9));     
-                  schedule_test_station(sid, timer);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_PROGRAMADDDEL:
-                  // Message format: 
-                  // bit 0 to 6 = program number (max. is 40)
-                  // bit 7 = Add (1) or delete (0)
-                  // bit 8 to 16 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMADDDEL);
-                  addProg = ((payload >> 7) & 0x1);
-                  pid = (int16_t) (0x7F & payload);
-                  sprintf_P(mirrorlinkProg.name, "%d", pid);
+        if (MirrorLinkReceive(rxArray) == true) {
+          bool packetOk = false;
+          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
+          packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
+          if (packetOk == true) {
+            // Process header
+            MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
+            MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
+            MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
+            MirrorLink.packetExchCtr = ((decryptedBuffer[0] & 0x3FFF) % 16383);
+            MirrorLink.command = (uint32_t)decryptedBuffer[1];
+            MLDEBUG_PRINT(F("Channel received:\t\t"));
+            MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
+            MLDEBUG_PRINT(F("PowerCMD received:\t\t"));
+            MLDEBUG_PRINTLN(MirrorLink.status.powerCmd);
 
-                  // If the request is to add (or modify) a program
-                  if (addProg)
-                  {
-                    // In case the new pid does not match the max. program number
-                    // SYNC issue identified, remove all programs
-                    if (pid != pd.nprograms) {
-                      // Delete all programs
-                      delete_program_data(-1);
-                      MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
-                    }
-                    // Otherwise create new program or modify existing one
-                    else {
-                      // Reset MirrorLinkProg
-                      mirrorlinkProg.enabled = 0;
-                      mirrorlinkProg.use_weather = 0;
-                      mirrorlinkProg.oddeven = 0;
-                      mirrorlinkProg.type = 0;
-                      mirrorlinkProg.starttime_type = 0;
-                      mirrorlinkProg.dummy1 = 0;
-                      mirrorlinkProg.days[0] = 0;
-                      mirrorlinkProg.days[1] = 0;
-                      for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
-                      for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
-                      sprintf_P(mirrorlinkProg.name, "%d", 0);
-                      change_program_data(pid, pd.nprograms, &mirrorlinkProg);
-                    }
-                  }
-                  // Request is to delete a program
-                  else
-                  {
-                    MLDEBUG_PRINT(F("Remove program/s: "));
-                    MLDEBUG_PRINTLN(pid);
-                    MLDEBUG_PRINT(F("Number of programs: "));
-                    MLDEBUG_PRINTLN(pd.nprograms);
-                    // In case the new pid to be removed is not within the available pid's range
-                    // SYNC issue identified, remove all programs
-                    if (pid >= pd.nprograms) {
-                      // Delete all programs
-                      delete_program_data(-1);
-                      MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
-                    }
-                    // Otherwise delete the program
-                    else {
-                      delete_program_data(pid);
-                    }
-                  }
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_PROGRAMMAINSETUP:
-                  // Message format:
-                  // bit 0 to 6 = program number (max. is 40)
-                  // bit 7 = enable/disable
-                  // bit 8 = use weather
-                  // bit 9 to 10 = Odd/even restriction
-                  // bit 11 to 12 = schedule type
-                  // bit 13 to 20 = Number of programs in remote
-                  // bit 21 to 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP);
-                  pid = (int16_t) (0x7F & payload);
-                  mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload >> 7));
-                  mirrorlinkProg.use_weather = (uint8_t) (0x1 & (payload >> 8));
-                  mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload >> 9));
-                  sprintf_P(mirrorlinkProg.name, "%d", pid);
-                  change_program_data(pid, pd.nprograms, &mirrorlinkProg);
-                  // Reset MirrorLinkProg
-                  mirrorlinkProg.enabled = 0;
-                  mirrorlinkProg.use_weather = 0;
-                  mirrorlinkProg.oddeven = 0;
-                  mirrorlinkProg.type = 0;
-                  mirrorlinkProg.starttime_type = 0;
-                  mirrorlinkProg.dummy1 = 0;
-                  mirrorlinkProg.days[0] = 0;
-                  mirrorlinkProg.days[1] = 0;
-                  for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
-                  for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
-                  sprintf_P(mirrorlinkProg.name, "%d", 0);
+            // print data of the packet
+            MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
+            MLDEBUG_PRINTLN(MirrorLink.command);
+            
+            // Process payload
+            if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_NORMAL) {
+              uint32_t payload = 0;
+              byte sid = 0;
+              int16_t pid = 0;
+              uint8_t en = 0;
+              uint16_t timer = 0;
+              uint8_t stTimeNum = 0;
+              uint16_t duration = 0;
+              uint8_t usw = 0;
+              uint8_t oddeven = 0;
+              uint8_t addProg = 0;
+              char * latitude;
+              char * longitude;
+              const float weight = 180./(1 << 23);
+              if (MirrorLink.command != 0) {
+                // Execute command
+                switch (MirrorLink.command >> 27) {
+                  // Initial state
+                  case ML_TESTSTATION:
+                    // Message format: 
+                    // bit 0 = status (1 = On, 0 = Off)
+                    // bit 1 to 8 = sid
+                    // bit 9 to 24 = time(sec)
+                    // bit 25 to 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
+                    sid = (byte) (0xFF & (payload >> 1));
+                    en = (uint8_t) (payload & 0x1);
+                    timer = (uint16_t) ((0xFFFF) & (payload >> 9));     
+                    schedule_test_station(sid, timer);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_PROGRAMADDDEL:
+                    // Message format: 
+                    // bit 0 to 6 = program number (max. is 40)
+                    // bit 7 = Add (1) or delete (0)
+                    // bit 8 to 16 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMADDDEL);
+                    addProg = ((payload >> 7) & 0x1);
+                    pid = (int16_t) (0x7F & payload);
+                    sprintf_P(mirrorlinkProg.name, "%d", pid);
 
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_PROGRAMDAYS:
-                  // Message format:
-                  // bit 0 to 6 = program number (max. is 40)
-                  // bit 7 to 22 = days
-                  // bit 23 to 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDAYS);
-                  pid = (int16_t) (0x7F & payload);
-                  mirrorlinkProg.days[0] = (byte) (0xFF & (payload >> 15));
-                  mirrorlinkProg.days[1] = (byte) (0xFF & (payload >> 7));
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;            
-                case ML_PROGRAMSTARTTIME:
-                  // Message format:
-                  // bit 0 to 6 = program number (max. is 40)
-                  // bit 7 to 8 = start time number (max. is 4 for each program)
-                  // bit 9 to 24 = start time
-                  // bit 25 = Starttime type
-                  // bit 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMSTARTTIME);
-                  pid = (int16_t)(payload & 0x7F);
-                  stTimeNum = (uint8_t)((payload >> 7) & 0x3);
-                  mirrorlinkProg.starttimes[stTimeNum] = (int16_t)((payload >> 9) & 0xFFFF);
-                  mirrorlinkProg.starttime_type = (uint8_t)((payload >> 25) & 0x1);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_PROGRAMDURATION:
-                  // Message format:
-                  // bit 0 to 6 = program number (max. is 40)
-                  // bit 7 to 14 = sid
-                  // bit 15 to 25 = time (min)
-                  // bit 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDURATION);
-                  pid = (int16_t)(payload & 0x7F);
-                  sid = (byte)((payload >> 7) & 0xFF);
-                  mirrorlinkProg.durations[sid] = (uint16_t)(60 * ((payload >> 15) & 0x7FF));
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_TIMESYNC:
-                  // Message format:
-                  // bit 0 to 26 = Unix Timestamp in minutes! not seconds
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_TIMESYNC);
-                  setTime((time_t)(60*(0x7FFFFFF & payload)));
-                  RTC.set((time_t)(60*(0x7FFFFFF & payload)));
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_TIMEZONESYNC:
-                  // Payload format:
-                  // bit 0 to 7 = Time zone
-                  // bit 8 to 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_TIMEZONESYNC);
-                  os.iopts[IOPT_TIMEZONE] = (byte)(0xFF & payload);
-                  os.iopts[IOPT_USE_NTP] = 0;
-                  os.iopts_save();
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_CURRENTREQUEST:
-                  // TODO:
-                  payload = MirrorLinkGetCmd((uint8_t)ML_CURRENTREQUEST);
-                case ML_EMERGENCYSHUTDOWN:
-                  // TODO:
-                  payload = MirrorLinkGetCmd((uint8_t)ML_EMERGENCYSHUTDOWN);
-                  break;
-                case ML_STATIONREBOOT:
-                  // Payload format:
-                  // bit 0 to 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_STATIONREBOOT);
-                  MirrorLink.status.rebootRequest = (uint16_t)true;
-                  os.reboot_dev(REBOOT_CAUSE_MIRRORLINK);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_LATITUDE:
-                  // Payload format: 
-                  // bit 0 to 24 = latitude (bit 24 for sign)
-                  // bit 24 to 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_LATITUDE);
-                  MirrorLink.latitude = (int32_t)(0xFFFFFF & payload);
-                  if (payload & 0x1000000) MirrorLink.latitude *= -1;
-                  sprintf_P(tmp_buffer, PSTR("%f,%f"), (float) (weight * ((float)MirrorLink.latitude- 0.5f)), (float) (weight * ((float)MirrorLink.longitude- 0.5f)));
-                  os.sopt_save(SOPT_LOCATION, tmp_buffer);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_LONGITUDE:
-                  // Payload format: 
-                  // bit 0 to 23 = longitude
-                  // bit 24 to 26 = Not used
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_LONGITUDE);
-                  MirrorLink.longitude = (int32_t)(0xFFFFFF & payload);
-                  if (payload & 0x1000000) MirrorLink.longitude *= -1;
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_SUNRISE:
-                  // TODO:
-                  payload = MirrorLinkGetCmd((uint8_t)ML_SUNRISE);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_SUNSET:
-                  // TODO:
-                  payload = MirrorLinkGetCmd((uint8_t)ML_SUNSET);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_RAINDELAYSTOPTIME:
-                  // TODO:
-                  payload = MirrorLinkGetCmd((uint8_t)ML_RAINDELAYSTOPTIME);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
-                case ML_STAYALIVE:
-                  // Payload format: 
-                  // bit 0 to 25 = Stayalive configured counter
-                  // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
-                  // bit 27 to 31 = cmd
-                  payload = MirrorLinkGetCmd((uint8_t)ML_STAYALIVE);
-                  MirrorLink.status.stayAlive = (uint8_t)((payload >> 26) & 0x01);
-                  MirrorLink.stayAliveMaxPeriod = (time_t)(payload & 0x3FFFFFF);
-                  MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-                  break;
+                    // If the request is to add (or modify) a program
+                    if (addProg)
+                    {
+                      // In case the new pid does not match the max. program number
+                      // SYNC issue identified, remove all programs
+                      if (pid != pd.nprograms) {
+                        // Delete all programs
+                        delete_program_data(-1);
+                        MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
+                      }
+                      // Otherwise create new program or modify existing one
+                      else {
+                        // Reset MirrorLinkProg
+                        mirrorlinkProg.enabled = 0;
+                        mirrorlinkProg.use_weather = 0;
+                        mirrorlinkProg.oddeven = 0;
+                        mirrorlinkProg.type = 0;
+                        mirrorlinkProg.starttime_type = 0;
+                        mirrorlinkProg.dummy1 = 0;
+                        mirrorlinkProg.days[0] = 0;
+                        mirrorlinkProg.days[1] = 0;
+                        for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
+                        for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+                        sprintf_P(mirrorlinkProg.name, "%d", 0);
+                        change_program_data(pid, pd.nprograms, &mirrorlinkProg);
+                      }
+                    }
+                    // Request is to delete a program
+                    else
+                    {
+                      MLDEBUG_PRINT(F("Remove program/s: "));
+                      MLDEBUG_PRINTLN(pid);
+                      MLDEBUG_PRINT(F("Number of programs: "));
+                      MLDEBUG_PRINTLN(pd.nprograms);
+                      // In case the new pid to be removed is not within the available pid's range
+                      // SYNC issue identified, remove all programs
+                      if (pid >= pd.nprograms) {
+                        // Delete all programs
+                        delete_program_data(-1);
+                        MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
+                      }
+                      // Otherwise delete the program
+                      else {
+                        delete_program_data(pid);
+                      }
+                    }
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_PROGRAMMAINSETUP:
+                    // Message format:
+                    // bit 0 to 6 = program number (max. is 40)
+                    // bit 7 = enable/disable
+                    // bit 8 = use weather
+                    // bit 9 to 10 = Odd/even restriction
+                    // bit 11 to 12 = schedule type
+                    // bit 13 to 20 = Number of programs in remote
+                    // bit 21 to 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP);
+                    pid = (int16_t) (0x7F & payload);
+                    mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload >> 7));
+                    mirrorlinkProg.use_weather = (uint8_t) (0x1 & (payload >> 8));
+                    mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload >> 9));
+                    sprintf_P(mirrorlinkProg.name, "%d", pid);
+                    change_program_data(pid, pd.nprograms, &mirrorlinkProg);
+                    // Reset MirrorLinkProg
+                    mirrorlinkProg.enabled = 0;
+                    mirrorlinkProg.use_weather = 0;
+                    mirrorlinkProg.oddeven = 0;
+                    mirrorlinkProg.type = 0;
+                    mirrorlinkProg.starttime_type = 0;
+                    mirrorlinkProg.dummy1 = 0;
+                    mirrorlinkProg.days[0] = 0;
+                    mirrorlinkProg.days[1] = 0;
+                    for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
+                    for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+                    sprintf_P(mirrorlinkProg.name, "%d", 0);
+
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_PROGRAMDAYS:
+                    // Message format:
+                    // bit 0 to 6 = program number (max. is 40)
+                    // bit 7 to 22 = days
+                    // bit 23 to 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDAYS);
+                    pid = (int16_t) (0x7F & payload);
+                    mirrorlinkProg.days[0] = (byte) (0xFF & (payload >> 15));
+                    mirrorlinkProg.days[1] = (byte) (0xFF & (payload >> 7));
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;            
+                  case ML_PROGRAMSTARTTIME:
+                    // Message format:
+                    // bit 0 to 6 = program number (max. is 40)
+                    // bit 7 to 8 = start time number (max. is 4 for each program)
+                    // bit 9 to 24 = start time
+                    // bit 25 = Starttime type
+                    // bit 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMSTARTTIME);
+                    pid = (int16_t)(payload & 0x7F);
+                    stTimeNum = (uint8_t)((payload >> 7) & 0x3);
+                    mirrorlinkProg.starttimes[stTimeNum] = (int16_t)((payload >> 9) & 0xFFFF);
+                    mirrorlinkProg.starttime_type = (uint8_t)((payload >> 25) & 0x1);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_PROGRAMDURATION:
+                    // Message format:
+                    // bit 0 to 6 = program number (max. is 40)
+                    // bit 7 to 14 = sid
+                    // bit 15 to 25 = time (min)
+                    // bit 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDURATION);
+                    pid = (int16_t)(payload & 0x7F);
+                    sid = (byte)((payload >> 7) & 0xFF);
+                    mirrorlinkProg.durations[sid] = (uint16_t)(60 * ((payload >> 15) & 0x7FF));
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_TIMESYNC:
+                    // Message format:
+                    // bit 0 to 26 = Unix Timestamp in minutes! not seconds
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_TIMESYNC);
+                    setTime((time_t)(60*(0x7FFFFFF & payload)));
+                    RTC.set((time_t)(60*(0x7FFFFFF & payload)));
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_TIMEZONESYNC:
+                    // Payload format:
+                    // bit 0 to 7 = Time zone
+                    // bit 8 to 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_TIMEZONESYNC);
+                    os.iopts[IOPT_TIMEZONE] = (byte)(0xFF & payload);
+                    os.iopts[IOPT_USE_NTP] = 0;
+                    os.iopts_save();
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_CURRENTREQUEST:
+                    // TODO:
+                    payload = MirrorLinkGetCmd((uint8_t)ML_CURRENTREQUEST);
+                  case ML_EMERGENCYSHUTDOWN:
+                    // TODO:
+                    payload = MirrorLinkGetCmd((uint8_t)ML_EMERGENCYSHUTDOWN);
+                    break;
+                  case ML_STATIONREBOOT:
+                    // Payload format:
+                    // bit 0 to 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_STATIONREBOOT);
+                    MirrorLink.status.rebootRequest = (uint16_t)true;
+                    os.reboot_dev(REBOOT_CAUSE_MIRRORLINK);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_LATITUDE:
+                    // Payload format: 
+                    // bit 0 to 24 = latitude (bit 24 for sign)
+                    // bit 24 to 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_LATITUDE);
+                    MirrorLink.latitude = (int32_t)(0xFFFFFF & payload);
+                    if (payload & 0x1000000) MirrorLink.latitude *= -1;
+                    sprintf_P(tmp_buffer, PSTR("%f,%f"), (float) (weight * ((float)MirrorLink.latitude- 0.5f)), (float) (weight * ((float)MirrorLink.longitude- 0.5f)));
+                    os.sopt_save(SOPT_LOCATION, tmp_buffer);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_LONGITUDE:
+                    // Payload format: 
+                    // bit 0 to 23 = longitude
+                    // bit 24 to 26 = Not used
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_LONGITUDE);
+                    MirrorLink.longitude = (int32_t)(0xFFFFFF & payload);
+                    if (payload & 0x1000000) MirrorLink.longitude *= -1;
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_SUNRISE:
+                    // TODO:
+                    payload = MirrorLinkGetCmd((uint8_t)ML_SUNRISE);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_SUNSET:
+                    // TODO:
+                    payload = MirrorLinkGetCmd((uint8_t)ML_SUNSET);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_RAINDELAYSTOPTIME:
+                    // TODO:
+                    payload = MirrorLinkGetCmd((uint8_t)ML_RAINDELAYSTOPTIME);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                  case ML_STAYALIVE:
+                    // Payload format: 
+                    // bit 0 to 25 = Stayalive configured counter
+                    // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
+                    // bit 27 to 31 = cmd
+                    payload = MirrorLinkGetCmd((uint8_t)ML_STAYALIVE);
+                    MirrorLink.status.stayAlive = (uint8_t)((payload >> 26) & 0x01);
+                    MirrorLink.stayAliveMaxPeriod = (time_t)(payload & 0x3FFFFFF);
+                    MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+                    break;
+                }
               }
+              MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+              MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_SEND"));
+              MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
+              // Delay to allow the remote to turn to rx mode
+              delay(100);
             }
-            MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_SEND"));
-            MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
-            // Delay to allow the remote to turn to rx mode
-            delay(100);
+            // If the command received requests a key change
+            // then go to change key
+            else if (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY) {
+              MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_KEYRENEWVAL"));
+              MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
+              // Update first part of the key
+              MirrorLink.associationKey[0] = decryptedBuffer[1];
+              // Reset Stayalive Timer
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              MirrorLink.status.keyRenewalTriedFlag = 0;
+              MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
+            }
+            // If the command received requests an association
+            // then go to association
+            else if (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION) {
+              MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
+              MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+              // Update first part of the key
+              MirrorLink.associationKey[0] = decryptedBuffer[1];
+              // Reset Stayalive Timer
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+              MirrorLinkResetToDefaultKey(MirrorLinkSpeckKeyExp);
+              MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
+              MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            }
+            // Update Link status
+            MirrorLink.status.link = ML_LINK_UP;
           }
-          else if (MirrorLink.status.comStatus == ML_LINK_COM_CHANGEKEY) {
-            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_KEYRENEWVAL"));
-            MirrorLink.status.keyRenewalTriedFlag = 0;
-            MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
-            MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
-          }
-          else if (MirrorLink.status.comStatus == ML_LINK_COM_ASSOCIATION) {
+          // If message decryption unsuccessful
+          // then go to association
+          else {
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-            MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
+            MirrorLinkResetToDefaultKey(MirrorLinkSpeckKeyExp);
+            MirrorLink.sendTimer = 0;
+            MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            MirrorLinkReceiveInit();
+            // Update Link status
+            MirrorLink.status.link = ML_LINK_DOWN;
           }
-          // Update Link status
-          MirrorLink.status.link = ML_LINK_UP;
         }
-        else if (MirrorLink.status.comStatus == ML_LINK_COM_ASSOCIATION) {
-          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
-          MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-          MirrorLink.sendTimer = 0;
-          MirrorLinkReceiveInit();
-          // Update Link status
-          MirrorLink.status.link = ML_LINK_DOWN;
+        // If reception timeout then go to association
+        else if (MirrorLink.stayAliveTimer <= os.now_tz()) {
+            
+            MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
+            MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
+            MirrorLinkResetToDefaultKey(MirrorLinkSpeckKeyExp);
+            MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            MirrorLink.sendTimer = 0;
+            MirrorLinkReceiveInit();
+            // Update Link status
+            MirrorLink.status.link = ML_LINK_DOWN;
         }
+        MirrorLinkStayAliveControl();
       }
       break;
   }
@@ -1891,37 +2254,142 @@ void MirrorLinkWork(void) {
     case MIRRORLINK_ASSOCIATE:
     // Key-renewval state 
     case MIRRORLINK_KEYRENEWVAL:
-      // Association algorithm
+      // Remote
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         // If timeout send association request
         if (MirrorLink.sendTimer <= os.now_tz()) {
+          uint8_t nextChannel = 0;
+          byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+          uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+
           // Send association request
-          MirrorLinkTransmit();
+
+          // Process header
+          // Calculate Power Level to station
+          MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
+          // Increase number of association attempts
+          MirrorLink.associationAttempts++;
+          // If not associated
+          // Reset to default key
+          if (MirrorLink.status.mirrorlinkState == (uint32_t)MIRRORLINK_ASSOCIATE) {
+            nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            MirrorLink.packetExchCtr = random(16383);
+            MirrorLink.status.comStationState = ML_LINK_COM_ASSOCIATION;
+          }
+          else {
+            if (MirrorLink.status.freqHopState == 1) {
+              nextChannel = random(0, ML_CH_MAX);
+            }
+            else {
+              nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            }
+            MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+            MirrorLink.status.comStationState = ML_LINK_COM_CHANGEKEY;
+          }
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+
+          // Process payload
+          // Generate first part of future random key for the link
+          MirrorLink.associationKey[0] = (uint32_t)random(INT32_MAX);
+          plainBuffer[1] = MirrorLink.associationKey[0];
+          
+          // Encrypt plain message
+          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+
+          // Send encrypted message
+          MirrorLinkTransmit(txArray);
+
+          MirrorLink.status.channelNumber = nextChannel;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         }
         // If association/change of keys request sent
         else if (MirrorLinkTransmitStatus() == true) {
-          // Predict transmission time in milliseconds if first transmission
-          if (MirrorLink.txTime == 0) MirrorLink.txTime = (uint32_t)(lora.getTimeOnAir((byte)8) / 1000);
           // Calculate transmission-free time based on duty cycle and time of last message
-          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+          //if (MirrorLink.status.mirrorlinkState == (uint32_t)MIRRORLINK_ASSOCIATE) {
+            // Predict transmission time in milliseconds for the first transmission
+            //if (MirrorLink.txTime == 0) MirrorLink.txTime = (uint32_t)(lora.getTimeOnAir((byte)8) / 1000);
+            //MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+          //}
+          //else {
+            MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
+          //}
           // First attempt made
           MirrorLink.status.keyRenewalTriedFlag = 1;
           // Wait for answer to association/change of keys request command
           MirrorLinkReceiveInit();
         }
       }
+      // Station
       else {
-        // Wait for associating request
-        if (MirrorLinkReceiveStatus() == true) {
-          // Start transmission timer
-          MirrorLink.sendTimer = (os.now_tz() + (time_t)(MIRRORLINK_RXTX_DEAD_TIME)); 
+        byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+        uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+        // If message received and decoded propertly (it could be association or renewval)
+        if (MirrorLinkReceive(rxArray) == true) {
+          uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          bool packetOk = false;
+          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
+          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_KEYRENEWVAL) packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
+          if (packetOk == true) {
+            // Check if association or renewval command from station
+            MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
+            if (   (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION)
+                || (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY) ) {
+              MirrorLink.packetExchCtr = ((decryptedBuffer[0] & 0x3FFF) % 16383);
+              MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
+              MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
+              // Update first part of the key
+              MirrorLink.associationKey[0] = decryptedBuffer[1];
+              // Start transmission timer
+              MirrorLink.sendTimer = (os.now_tz() + (time_t)(MIRRORLINK_RXTX_DEAD_TIME));
+              // Reset Stayalive Timer
+              MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
+            }
+            else {
+              MLDEBUG_PRINTLN(F("Remote state is not association/renewval!"));
+            }
+          }
+          // If issue with decryption, check again with default keys
+          else {
+            MirrorLinkResetToDefaultKey(MirrorLinkSpeckKeyExp);
+            if (MirrorLinkCheckDecryptedMessage(decryptedBuffer) == true) {
+              // Check if association or renewval command from station
+              MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
+              if (   (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION)
+                  || (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY) ) {
+                MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
+                MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
+                // Update first part of the key
+                MirrorLink.associationKey[0] = decryptedBuffer[1];
+                // Start transmission timer
+                MirrorLink.sendTimer = (os.now_tz() + (time_t)(MIRRORLINK_RXTX_DEAD_TIME));
+              }
+            }
+          }
         }
-        // If transmission timer is due
-        else if (   (MirrorLink.sendTimer == os.now_tz())
+        // Else if transmission timer is due
+        else if (  (MirrorLink.sendTimer == os.now_tz())
                 && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
+          byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+          uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          MirrorLink.associationAttempts++;
+
+          // Process header
           // If association request sent
-          MirrorLinkTransmit();
+          // Increase packetExchCtr value
+          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+
+          // Process payload
+          // Generate second part of future random key for the link
+          MirrorLink.associationKey[1] = (uint32_t)random(INT32_MAX);
+          plainBuffer[1] = MirrorLink.associationKey[1];
+
+          // Encrypt plain message
+          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+
+          // Send encrypted message
+          MirrorLinkTransmit(txArray);
         }
         MirrorLinkStayAliveControl();
       }
@@ -1931,25 +2399,102 @@ void MirrorLinkWork(void) {
       break;
     // Send state
     case MIRRORLINK_SEND:
+      // Remote
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         // Send buffer
         // If number of buffered commands > 0
         // AND previous command successfully sent
         if (MirrorLink.bufferedCommands > 0) {
           if (MirrorLinkTransmitStatus() == true) {
-            MirrorLinkTransmit();
+            uint8_t nextChannel = 0;
+            byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+            uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+
+            // Process header
+            // Send next channel to station
+            if (MirrorLink.status.freqHopState == 1) {
+              nextChannel = random(0, ML_CH_MAX);
+            }
+            else {
+              nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            }
+            MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+            plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+
+            // Process payload
+            // Increase packetExchCtr value
+            plainBuffer[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
+
+            // Encrypt plain message
+            MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+
+            // Send encrypted message
+            MirrorLinkTransmit(txArray);
           }
         }
         // Empty buffer
         // Calculate idle time until next send period
       }
+      // Station
       else {
         // Send answer if not yet transmitted
         if (   (MirrorLink.sendTimer == (os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME))
             && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
-          MirrorLinkTransmit();
+          byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
+          uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+
+          // Process header
+          // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
+          uint8_t rssi, snr;
+          if (MirrorLink.rssiLocal >= 0) {
+            if ((MirrorLink.rssiLocal / 2) > 127) {
+              rssi = (uint8_t)127;
+            }
+            else {
+              rssi = (uint8_t)(MirrorLink.rssiLocal / 2);
+            }
+          } 
+          else {
+            if ((MirrorLink.rssiLocal / 2) < -127) {
+              rssi = ((uint8_t)127 | 0x80);
+            }
+            else {
+              rssi = (((uint8_t)((MirrorLink.rssiLocal / 2) * -1)) | 0x80);
+            }
+          }
+
+          // Encode SNR to 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
+          if (MirrorLink.snrLocal >= 0) {
+            if ((MirrorLink.snrLocal / 2) > 127) {
+              snr = (uint8_t)127;
+            }
+            else {
+              snr = (uint8_t)(MirrorLink.snrLocal / 2);
+            }
+          } 
+          else {
+            if ((MirrorLink.snrLocal / 2) < -127) {
+              snr = ((uint8_t)127 | 0x80);
+            }
+            else {
+              snr = (((uint8_t)((MirrorLink.snrLocal / 2) * -1)) | 0x80);
+            }
+          }
+          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+
+          // Process payload
+          plainBuffer[1] = (((uint32_t)(snr & 0xFF) << 24) | (((uint32_t)(rssi & 0xFF)) << 16) | ((uint32_t)(MirrorLink.command >> 16)));
+          MirrorLink.command = 0;
+
+          // Encrypt plain message
+          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+
+          // Send encrypted message
+          MirrorLinkTransmit(txArray);
+
+          MirrorLinkStayAliveControl();
         }
-        MirrorLinkStayAliveControl();
       }
       break;
     // Receive state
