@@ -485,50 +485,50 @@ uint32_t MirrorLinkGetCmd(uint8_t cmd)
 void MirrorLinkPeriodicCommands(void) {
   // Send regular commands (slow)
   if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_SLOW_PERIOD) == 0) {
-
-    // Send ML_TIMESYNC
-		// bit 0 to 26 = Unix Timestamp in minutes! not seconds
-		// bit 27 to 31 = cmd
-    MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
-    
     // Send ML_TIMEZONESYNC
     // Payload format:
     // bit 0 to 7 = Time zone
     // bit 27 to 31 = cmd
     MirrorLinkBuffCmd((uint8_t)ML_TIMEZONESYNC, (uint32_t)(0xFF & (os.iopts[IOPT_TIMEZONE])));
-    
+
     // Send ML_LATITUDE and ML_LONGITUDE
     os.sopt_load(SOPT_LOCATION);
     char * latitude = strtok((char *)tmp_buffer, ",");
-		char * longitude = strtok(NULL, ",");
+    char * longitude = strtok(NULL, ",");
     // Encode latitude and longitude in 23 bit ints
     const float weight = 180./(1 << 23);
-		int32_t fp_lat = (int) (0.5f + atof(latitude) / weight);
-		int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
+    int32_t fp_lat = (int) (0.5f + atof(latitude) / weight);
+    int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
 
-		// Payload format: 
-		// bit 0 to 23 = longitude
-		// bit 24 to 26 = Not used
-		// bit 27 to 31 = cmd
+    // Payload format: 
+    // bit 0 to 23 = longitude
+    // bit 24 to 26 = Not used
+    // bit 27 to 31 = cmd
 
     // Encode negative longitude
     if (fp_lon < 0) {
       fp_lon *= -1;
       fp_lon |= 0x1000000;
     }
-		MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0x1FFFFFF & fp_lon));
+    MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0x1FFFFFF & fp_lon));
 
-		// Payload format: 
-		// bit 0 to 24 = latitude (bit 24 for sign)
-		// bit 25 to 26 = Not used
-		// bit 27 to 31 = cmd
+    // Payload format: 
+    // bit 0 to 24 = latitude (bit 24 for sign)
+    // bit 25 to 26 = Not used
+    // bit 27 to 31 = cmd
 
     // Encode negative latitude
     if (fp_lat < 0) {
       fp_lat *= -1;
       fp_lat |= 0x1000000;
     }
-		MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0x1FFFFFF & fp_lat));
+    MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0x1FFFFFF & fp_lat));
+
+    // Send ML_STAYALIVE config
+    // bit 0 to 25 = Stayalive configured counter
+    // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
+    // bit 27 to 31 = cmd
+    MirrorLinkBuffCmd((uint8_t)ML_STAYALIVE, (uint32_t)((((uint32_t)1) << 26) | (0x3FFFFFF & MIRRORLINK_STAYALIVE_PERIOD)));
   }
   // Send regular commands (mid)
   if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_MID_PERIOD) == 0) {
@@ -537,11 +537,10 @@ void MirrorLinkPeriodicCommands(void) {
   }
   // Send regular commands (fast)
   if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_FAST_PERIOD) == 0) {
-    // Send ML_STAYALIVE
-    // bit 0 to 25 = Stayalive configured counter
-    // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
+    // Send ML_TIMESYNC
+    // bit 0 to 26 = Unix Timestamp in minutes! not seconds
     // bit 27 to 31 = cmd
-    MirrorLinkBuffCmd((uint8_t)ML_STAYALIVE, (uint32_t)((((uint32_t)1) << 26) | (0x3FFFFFF & MIRRORLINK_STAYALIVE_PERIOD)));
+    MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
   }
 }
 
@@ -693,7 +692,7 @@ String MirrorLinkStatusPackets() {
   mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"packettime\":[";
   mirrorLinkInfo += "\"";
-  if ( MirrorLink.status.mirrorlinkState != MIRRORLINK_SEND) {
+  if (MirrorLink.status.flagRxTx == ML_RECEIVING) {
     mirrorLinkInfo += String(MirrorLink.txTime);
   }
   else {
@@ -804,6 +803,24 @@ uint8_t MirrorLinkPowerCmdEncode(void) {
   return powerCmd;
 }
 
+void MirrorLinkResetToDefaultKey(uint32_t *decryptionKey) {
+  MLDEBUG_PRINTLN(F("Resetting to default key"));
+  decryptionKey[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
+  decryptionKey[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
+  decryptionKey[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
+  decryptionKey[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
+  MirrorLinkSpeckKeySchedule(decryptionKey, MirrorLinkSpeckKeyExp);
+}
+
+void MirrorLinkUpdateEncryptionKey(uint32_t *encryptionKey, uint32_t *associationKey) {
+  MLDEBUG_PRINTLN(F("Updating encryption key"));
+  encryptionKey[3] = encryptionKey[1];
+  encryptionKey[2] = encryptionKey[0];
+  encryptionKey[1] = associationKey[1];
+  encryptionKey[0] = associationKey[0];
+  MirrorLinkSpeckKeySchedule(encryptionKey, MirrorLinkSpeckKeyExp);
+}
+
 // MirrorLink module initialization
 void MirrorLinkInit(void) {
   MirrorLink.moduleState = ERR_NONE;
@@ -829,11 +846,7 @@ void MirrorLinkInit(void) {
   MirrorLink.keyRenewalTimer = os.now_tz() + random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
   MirrorLink.snrLocal = -200;
   MirrorLink.rssiLocal = -200;
-  MirrorLink.key[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
-  MirrorLink.key[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
-  MirrorLink.key[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
-  MirrorLink.key[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
-  MirrorLinkSpeckKeySchedule(MirrorLink.key, MirrorLinkSpeckKeyExp);
+  MirrorLinkResetToDefaultKey(MirrorLink.key);
   MirrorLink.packetsSent = 0;
   MirrorLink.packetsReceived = 0;
   MirrorLink.associationAttempts = 0;
@@ -966,6 +979,12 @@ void MirrorLinkInit(void) {
     fp_lat |= 0x1000000;
   }
   MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0x1FFFFFF & fp_lat));
+
+  // Send ML_STAYALIVE config
+  // bit 0 to 25 = Stayalive configured counter
+  // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
+  // bit 27 to 31 = cmd
+  MirrorLinkBuffCmd((uint8_t)ML_STAYALIVE, (uint32_t)((((uint32_t)1) << 26) | (0x3FFFFFF & MIRRORLINK_STAYALIVE_PERIOD)));
 }
 
 bool MirrorLinkTransmitStatus(void) {
@@ -1064,12 +1083,6 @@ bool MirrorLinkReceive(byte *rxArray) {
       MLDEBUG_PRINTLN(MirrorLink.moduleState);
     }
 
-    // put module back to listen mode
-    lora.startReceive();
-
-    // Set flagRxTx to reception
-    MirrorLink.status.flagRxTx = (uint32_t)ML_RECEIVING;
-
     // we're ready to receive more packets,
     // enable interrupt service routine
     MirrorLink.status.enableInterrupt = (uint16_t)true;
@@ -1143,24 +1156,6 @@ bool MirrorLinkCheckPacketNumber(uint32_t *decryptedBuffer) {
   }
 
   return packetExchCtrMatch;
-}
-
-void MirrorLinkResetToDefaultKey(uint32_t *decryptionKey) {
-  MLDEBUG_PRINTLN(F("Resetting to default key"));
-  decryptionKey[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
-  decryptionKey[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
-  decryptionKey[2] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY9BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY10BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY11BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY12BYTE]));
-  decryptionKey[3] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY13BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY14BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY15BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY16BYTE]));
-  MirrorLinkSpeckKeySchedule(decryptionKey, MirrorLinkSpeckKeyExp);
-}
-
-void MirrorLinkUpdateEncryptionKey(uint32_t *encryptionKey, uint32_t *associationKey) {
-  MLDEBUG_PRINTLN(F("Updating encryption key"));
-  encryptionKey[3] = encryptionKey[1];
-  encryptionKey[2] = encryptionKey[0];
-  encryptionKey[1] = associationKey[1];
-  encryptionKey[0] = associationKey[0];
-  MirrorLinkSpeckKeySchedule(encryptionKey, MirrorLinkSpeckKeyExp);
 }
 
 void MirrorLinkReceiveInit(void) {
@@ -1268,8 +1263,7 @@ void MirrorLinkState(void) {
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
             // Calculate transmission-free time based on duty cycle and time of last message
-            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-            
+            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
             // Update Link status
             MirrorLink.status.comStationState = ML_LINK_COM_NORMAL;
             MirrorLink.status.link = ML_LINK_UP;
@@ -1288,7 +1282,7 @@ void MirrorLinkState(void) {
           //MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
           if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) MirrorLink.txTime = (lora.getTimeOnAir(8) / 1000);
           // Calculate transmission-free time based on duty cycle and time of last message
-          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
           // Update Link status
           MirrorLink.status.link = ML_LINK_DOWN;
         }
@@ -1321,12 +1315,12 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_KEYRENEWVAL"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
+          
+          // Process header
           // Trigger a change of keys
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_CHANGEKEY;
           // Reset key renewal timer
           MirrorLink.keyRenewalTimer = os.now_tz() + (time_t)random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
-
-          // Process header
           MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
           // Send next channel to station
           if (MirrorLink.status.freqHopState == 1) {
@@ -1402,7 +1396,7 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message
-          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
         }
       }
       else {
@@ -1486,7 +1480,7 @@ void MirrorLinkState(void) {
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
             // Calculate transmission-free time based on duty cycle and time of last message
-            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
 
             // Update Link status
             MirrorLink.status.link = ML_LINK_UP;
@@ -1509,7 +1503,7 @@ void MirrorLinkState(void) {
             MirrorLinkResetToDefaultKey(MirrorLink.key);
             MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             // Calculate transmission-free time based on duty cycle and time of last message
-            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+            MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
 
             // Update Link status
             MirrorLink.status.link = ML_LINK_DOWN;
@@ -1541,7 +1535,7 @@ void MirrorLinkState(void) {
           MirrorLinkResetToDefaultKey(MirrorLink.key);
           MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Calculate transmission-free time based on duty cycle and time of last message
-          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
+          MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
 
           // Update Link status
           MirrorLink.status.link = ML_LINK_DOWN;
@@ -1956,15 +1950,7 @@ void MirrorLinkWork(void) {
         }
         // If association/change of keys request sent
         else if (MirrorLinkTransmitStatus() == true) {
-          // Calculate transmission-free time based on duty cycle and time of last message
-          //if (MirrorLink.status.mirrorlinkState == (uint32_t)MIRRORLINK_ASSOCIATE) {
-            // Predict transmission time in milliseconds for the first transmission
-            //if (MirrorLink.txTime == 0) MirrorLink.txTime = (uint32_t)(lora.getTimeOnAir((byte)8) / 1000);
-            //MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MIRRORLINK_MAX_DUTY_CYCLE))) / 10000);
-          //}
-          //else {
-            MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
-          //}
+          MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
           // First attempt made
           MirrorLink.status.keyRenewalTriedFlag = 1;
           // Wait for answer to association/change of keys request command

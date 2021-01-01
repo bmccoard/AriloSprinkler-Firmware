@@ -27,21 +27,20 @@
 // Config defines
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
 #define MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH 8      // Length in bytes from the Lora messages
-#define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  30//1800   // Period in seconds to send the regular commands to remote station (fast)
-#define MIRRORLINK_REGCOMMANDS_MID_PERIOD   60//86400  // Period in seconds to send the regular commands to remote station (mid)
-#define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  90//604800 // Period in seconds to send the regular commands to remote station (slow)
-#define MIRRORLINK_MAX_DUTY_CYCLE           1000//10     // Maximum duty cycle in tenths of % (1 = 0.1)
+#define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  1800   // Period in seconds to send the regular commands to remote station (fast)
+#define MIRRORLINK_REGCOMMANDS_MID_PERIOD   86400  // Period in seconds to send the regular commands to remote station (mid)
+#define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
-#define MIRRORLINK_STAYALIVE_PERIOD         35//3600     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_STAYALIVE_PERIOD         3600   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
-#define MIRRORLINK_KEYCHANGE_MAX_TIME       55//3600   // Maximum period in seconds to renew the keys
-#define MIRRORLINK_KEYCHANGE_MIN_TIME       45//900   // Minimum period in seconds to renew the keys
-#define MIRRORLINK_MAX_POWER                16  // MirrorLink maximum transmission power in dBm
-#define MIRRORLINK_MIN_POWER               -17  // MirrorLink minimum transmission power in dBm
-#define MIRRORLINK_AMPLIF_FACTOR            14  // MirrorLink amplification factor in dB (amplifier plus antenna, for plain E22-900T30S with 0dB antenna is 14dBm -> for 16dBm tx, amplification up to 30dBm)
-#define MIRRORLINK_MIN_POWER_BUDGET        -110  // MirrorLink minimum link budget in dBm for proper reception
-#define MIRRORLINK_NETWORK_ID               0x94 // Default Network ID
+#define MIRRORLINK_KEYCHANGE_MAX_TIME       3600   // Maximum period in seconds to renew the keys
+#define MIRRORLINK_KEYCHANGE_MIN_TIME       900    // Minimum period in seconds to renew the keys
+#define MIRRORLINK_MAX_POWER                16     // MirrorLink maximum transmission power in dBm
+#define MIRRORLINK_MIN_POWER               -17     // MirrorLink minimum transmission power in dBm
+#define MIRRORLINK_AMPLIF_FACTOR            14     // MirrorLink amplification factor in dB (amplifier plus antenna, for plain E22-900T30S with 0dB antenna is 14dBm -> for 16dBm tx, amplification up to 30dBm)
+#define MIRRORLINK_MIN_POWER_BUDGET        -110    // MirrorLink minimum link budget in dBm for proper reception
+#define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
 
 // Speck64/128 encryption based on NSA implementation guide
 #define MIRRORLINK_SPECK_ROUNDS             27
