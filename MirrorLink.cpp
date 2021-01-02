@@ -92,7 +92,7 @@ typedef union {
     uint32_t comStationState : 2;      // Command sent from remote to change station state
     uint32_t powerCmd : 4;             // Power level command to be sent by remote and executed by station
     uint32_t channelNumber : 4;        // Channel number for the link
-    uint32_t keyRenewalTriedFlag : 1;  // Flag to indicate that a key renewal has been performed
+    uint32_t nonceUpdateTriedFlag : 1; // Flag to indicate that a nonce update try has been performed
     uint32_t freqHopState : 1;         // State of Frequency Hopping (1 = enable, 0 = disable)
     uint32_t atpcState : 1;            // State of the Adaptive Transmissison Power Control (1 = enable, 0 = disable)
   };
@@ -100,12 +100,13 @@ typedef union {
 
 struct MIRRORLINK {
   uint32_t key[MIRRORLINK_SPECK_KEY_LEN];             // Encryption key for the Link
-  uint32_t associationKey[MIRRORLINK_SPECK_TEXT_LEN]; // Association key for the Link used to generate new key
+  uint32_t nonceCtr[MIRRORLINK_SPECK_TEXT_LEN];       // Nonce for the cipher plus counter
+  uint32_t nonce[MIRRORLINK_SPECK_TEXT_LEN];          // Nonce for the cipher
   time_t sendTimer;                                   // Timer in seconds to control send timing
   MirrorLinkStateBitfield status;                     // Bittfield including states as well as several flags
   time_t stayAliveTimer;                              // Timer in seconds to control if remote and station are still connected
   time_t stayAliveMaxPeriod;                          // Maximum period in seconds configured to control if remote and station are still connected
-  time_t keyRenewalTimer;                             // Timer to control the key renewal process
+  time_t nonceUpdateTimer;                            // Timer to control the nonce update process
   uint32_t packetsSent;                               // Number of sent packets
   uint32_t packetsReceived;                           // Number of received packets
   uint32_t buffer[MIRRORLINK_BUFFERLENGTH];           // Buffer for queued commands to be sent to station
@@ -115,7 +116,6 @@ struct MIRRORLINK {
   int32_t latitude;                                   // Latitude of the remote station
   int32_t longitude;                                  // Longitude of the remote station
   int16_t moduleState;                                // LORA module state
-  uint16_t packetExchCtr;                             // Counter to control sequence of packets exchanged in the link
   uint16_t associationAttempts;                       // Counter to control the number of association attempts
   int16_t snrLocal;                                   // Local SNR (local reception)
   int16_t rssiLocal;                                  // Local RSSI (local reception)
@@ -134,7 +134,7 @@ void schedule_test_station(byte sid, uint16_t duration);
 void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog);
 void delete_program_data(int32_t pid);
 
-// Speck64/128 encryption based on NSA implementation guide
+// Speck64/128 encryption based on NSA implementation guide plus CTR cipher mode
 // Speck encryption key expand function
 void MirrorLinkSpeckKeySchedule(uint32_t const K[MIRRORLINK_SPECK_KEY_LEN], uint32_t rk[MIRRORLINK_SPECK_ROUNDS])
 {
@@ -149,28 +149,6 @@ void MirrorLinkSpeckKeySchedule(uint32_t const K[MIRRORLINK_SPECK_KEY_LEN], uint
   for (i = 0; i < MIRRORLINK_SPECK_ROUNDS - 1; i++) {
     ER(a[i % (MIRRORLINK_SPECK_KEY_LEN - 1)], b, i);
     rk[i + 1] = b;
-  }
-}
-
-// Speck encryption function
-void MirrorLinkSpeckEncrypt(uint32_t const pt[2], uint32_t ct[2], uint32_t const rk[MIRRORLINK_SPECK_ROUNDS])
-{
-  uint32_t i;
-  ct[0]=pt[0]; ct[1]=pt[1];
-
-  for(i = 0; i < MIRRORLINK_SPECK_ROUNDS; i++){
-    ER(ct[1], ct[0], rk[i]);
-  }
-}
-
-// Speck decryption function
-void MirrorLinkSpeckDecrypt(uint32_t const ct[2], uint32_t pt[2], uint32_t const rk[MIRRORLINK_SPECK_ROUNDS])
-{
-  uint32_t i;
-  pt[0]=ct[0]; pt[1]=ct[1];
-
-  for(i = 0; i < MIRRORLINK_SPECK_ROUNDS; i++){
-    DR(pt[1], pt[0], rk[(MIRRORLINK_SPECK_ROUNDS - 1) - i]);
   }
 }
 
@@ -644,8 +622,8 @@ String MirrorLinkStatusRadio() {
     case ML_LINK_COM_ASSOCIATION:
       mirrorLinkInfo += "ASSOCIATING";
       break;
-    case ML_LINK_COM_CHANGEKEY:
-      mirrorLinkInfo += "CHANGING KEY";
+    case ML_LINK_COM_NONCEUPDATE:
+      mirrorLinkInfo += "NONCE UPDATE";
       break;
     case ML_LINK_COM_NORMAL:
       mirrorLinkInfo += "ASSOCIATED";
@@ -803,7 +781,26 @@ uint8_t MirrorLinkPowerCmdEncode(void) {
   return powerCmd;
 }
 
-void MirrorLinkResetToDefaultKey(uint32_t *decryptionKey) {
+// void MirrorLinkEncryptionDecryptionTest(void) {
+//   MLDEBUG_PRINTLN(F("Encryption/Decryption Test"));
+//   uint32_t nounce[MIRRORLINK_SPECK_KEY_LEN];;
+//   uint32_t plainText[MIRRORLINK_SPECK_KEY_LEN];;
+//   MLDEBUG_PRINTLN(F("Encryption Key: "));
+//   MLDEBUG_PRINT(MirrorLink.key[0]);
+//   MLDEBUG_PRINTLN(MirrorLink.key[1]);
+//   nounce[0] = random();
+//   nounce[1] = random();
+//   MLDEBUG_PRINTLN(F("Nounce: "));
+//   MLDEBUG_PRINT(nounce[0]);
+//   MLDEBUG_PRINTLN(nounce[1]);
+//   plainText[0] = random();
+//   plainText[1] = random();
+//   MLDEBUG_PRINTLN(F("Plaintext: "));
+
+
+// }
+
+void MirrorLinkSetToDefaultKey(uint32_t *decryptionKey) {
   MLDEBUG_PRINTLN(F("Resetting to default key"));
   decryptionKey[0] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY1BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY2BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY3BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY4BYTE]));
   decryptionKey[1] = (((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY5BYTE] << 24) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY6BYTE] << 16) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY7BYTE] << 8) | ((uint32_t)os.iopts[IOPT_ML_ASSOC_KEY8BYTE]));
@@ -812,13 +809,20 @@ void MirrorLinkResetToDefaultKey(uint32_t *decryptionKey) {
   MirrorLinkSpeckKeySchedule(decryptionKey, MirrorLinkSpeckKeyExp);
 }
 
-void MirrorLinkUpdateEncryptionKey(uint32_t *encryptionKey, uint32_t *associationKey) {
-  MLDEBUG_PRINTLN(F("Updating encryption key"));
-  encryptionKey[3] = encryptionKey[1];
-  encryptionKey[2] = encryptionKey[0];
-  encryptionKey[1] = associationKey[1];
-  encryptionKey[0] = associationKey[0];
-  MirrorLinkSpeckKeySchedule(encryptionKey, MirrorLinkSpeckKeyExp);
+void MirrorLinkIncrementNonceCtr(uint32_t *nonceCtr) {
+  MLDEBUG_PRINTLN(F("Incrementing nonceCtr"));
+  if (nonceCtr[0] == UINT32_MAX) {
+    nonceCtr[0] = 0;
+    if (nonceCtr[1] == UINT32_MAX) {
+      nonceCtr[1] = 0;
+    }
+    else {
+      nonceCtr[1]++;
+    }
+  }
+  else {
+    nonceCtr[0]++;
+  }
 }
 
 // MirrorLink module initialization
@@ -836,17 +840,21 @@ void MirrorLinkInit(void) {
   MirrorLink.status.stayAlive = (uint32_t)true;
   MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
   MirrorLink.status.link = ML_LINK_DOWN;
-  MirrorLink.status.keyRenewalTriedFlag = 0;
+  MirrorLink.status.nonceUpdateTriedFlag = 0;
   MirrorLink.status.powerCmd = (uint32_t)0;
   MirrorLink.status.freqHopState = ((uint32_t)((os.iopts[IOPT_ML_DEFCHANNEL]) & 0x80) >> 7);
   MirrorLink.status.atpcState = ((uint32_t)((os.iopts[IOPT_ML_MAXPOWER]) & 0x80) >> 7);
+  for (uint8_t i = 0; i < MIRRORLINK_SPECK_TEXT_LEN; i++) {
+    MirrorLink.nonce[i] = 0;
+    MirrorLink.nonceCtr[i] = 0;
+  }
   MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
   MirrorLink.stayAliveMaxPeriod = (time_t)MIRRORLINK_STAYALIVE_PERIOD;
   MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-  MirrorLink.keyRenewalTimer = os.now_tz() + random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
+  MirrorLink.nonceUpdateTimer = os.now_tz() + random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
   MirrorLink.snrLocal = -200;
   MirrorLink.rssiLocal = -200;
-  MirrorLinkResetToDefaultKey(MirrorLink.key);
+  MirrorLinkSetToDefaultKey(MirrorLink.key);
   MirrorLink.packetsSent = 0;
   MirrorLink.packetsReceived = 0;
   MirrorLink.associationAttempts = 0;
@@ -858,7 +866,6 @@ void MirrorLinkInit(void) {
   MirrorLink.snrRemote = -200;
   MirrorLink.rssiRemote = -200;
   MirrorLink.txTime = 0;
-  MirrorLink.packetExchCtr = 0;
   // Intern program to store program data sent by remote
   mirrorlinkProg.enabled = 0;
   mirrorlinkProg.use_weather = 0;
@@ -871,7 +878,6 @@ void MirrorLinkInit(void) {
   for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
   for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
   sprintf_P(mirrorlinkProg.name, "%d", 0);
-  MirrorLink.packetExchCtr = 0;
   if (os.iopts[IOPT_ML_MAXPOWER] & 0x40) {
     MirrorLink.powerMax = (int8_t)(os.iopts[IOPT_ML_MAXPOWER] & 0x3F) * ((int8_t)-1);
   }
@@ -1091,10 +1097,7 @@ bool MirrorLinkReceive(byte *rxArray) {
   return rxSuccessful;
 }
 
-void MirrorLinkEncryptMessage(byte *txArray, uint32_t *plainBuffer, uint32_t *encryptionKeyExt) {
-  // Message encryption
-  uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN] = {0, 0};
-  MirrorLinkSpeckEncrypt(plainBuffer, encryptedBuffer, encryptionKeyExt);
+void MirrorLinkEncodeMessage(byte *txArray, uint32_t *encryptedBuffer) {
   txArray[0] = (byte)(0xFF & encryptedBuffer[0] >> 24);
   txArray[1] = (byte)(0xFF & encryptedBuffer[0] >> 16);
   txArray[2] = (byte)(0xFF & encryptedBuffer[0] >> 8);
@@ -1105,12 +1108,47 @@ void MirrorLinkEncryptMessage(byte *txArray, uint32_t *plainBuffer, uint32_t *en
   txArray[7] = (byte)(0xFF & encryptedBuffer[1]);
 }
 
-void MirrorLinkDecryptMessage(byte *rxArray, uint32_t *decryptedBuffer, uint32_t *decryptionKeyExt) {
-  // Message decryption
-  uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN] = {0, 0};
+void MirrorLinkDecodeMessage(byte *rxArray, uint32_t *encryptedBuffer) {
   encryptedBuffer[0] = (((uint32_t)(rxArray[0]) << 24) | ((uint32_t)(rxArray[1]) << 16) | ((uint32_t)(rxArray[2]) << 8) | ((uint32_t)(rxArray[3])));
   encryptedBuffer[1] = (((uint32_t)(rxArray[4]) << 24) | ((uint32_t)(rxArray[5]) << 16) | ((uint32_t)(rxArray[6]) << 8) | ((uint32_t)(rxArray[7])));
-  MirrorLinkSpeckDecrypt(encryptedBuffer, decryptedBuffer, decryptionKeyExt);
+}
+
+// Speck encryption function
+void MirrorLinkSpeckEncrypt(uint32_t const pt[2], uint32_t ct[2], uint32_t const rk[MIRRORLINK_SPECK_ROUNDS])
+{
+  uint32_t i;
+  ct[0]=pt[0]; ct[1]=pt[1];
+
+  for(i = 0; i < MIRRORLINK_SPECK_ROUNDS; i++){
+    ER(ct[1], ct[0], rk[i]);
+  }
+}
+
+// Speck decryption function
+void MirrorLinkSpeckDecrypt(uint32_t const ct[2], uint32_t pt[2], uint32_t const rk[MIRRORLINK_SPECK_ROUNDS])
+{
+  uint32_t i;
+  pt[0]=ct[0]; pt[1]=ct[1];
+
+  for(i = 0; i < MIRRORLINK_SPECK_ROUNDS; i++){
+    DR(pt[1], pt[0], rk[(MIRRORLINK_SPECK_ROUNDS - 1) - i]);
+  }
+}
+
+// Speck CTR encryption function
+void MirrorLinkSpeckCtrEncrypt(uint32_t *encryptedBuffer, uint32_t *plainBuffer, uint32_t *nonceCtr, uint32_t *encryptionKeyExt) {
+  // Message encryption
+  MirrorLinkSpeckEncrypt(nonceCtr, encryptedBuffer, encryptionKeyExt);
+  encryptedBuffer[0] ^= plainBuffer[0];
+  encryptedBuffer[1] ^= plainBuffer[1];
+}
+
+// Speck CTR decryption function
+void MirrorLinkSpeckCtrDecrypt(uint32_t *encryptedBuffer, uint32_t *decryptedBuffer, uint32_t *nonceCtr, uint32_t *decryptionKeyExt) {
+  // Message decryption
+  MirrorLinkSpeckEncrypt(nonceCtr, decryptedBuffer, decryptionKeyExt);
+  decryptedBuffer[0] ^= encryptedBuffer[0];
+  decryptedBuffer[1] ^= encryptedBuffer[1];
 }
 
 bool MirrorLinkCheckDecryptedMessage(uint32_t *decryptedBuffer) {
@@ -1139,23 +1177,6 @@ bool MirrorLinkCheckDecryptedMessage(uint32_t *decryptedBuffer) {
   }
 
   return decryptedSuccessful;
-}
-
-bool MirrorLinkCheckPacketNumber(uint32_t *decryptedBuffer) {
-  bool packetExchCtrMatch = false;
-
-  // Packet Exchange Control Match flag
-  packetExchCtrMatch = (bool)((decryptedBuffer[0] & 0x3FFF) == (MirrorLink.packetExchCtr + 1));
-
-  // If reception and decryption successful
-  if (!packetExchCtrMatch) {
-    // packet was received, but Network ID mismatch
-    MLDEBUG_PRINTLN(F("Packet Number mismatch!"));
-    MLDEBUG_PRINTLN(decryptedBuffer[0] & 0x3FFF);
-    MLDEBUG_PRINTLN(MirrorLink.packetExchCtr + 1);
-  }
-
-  return packetExchCtrMatch;
 }
 
 void MirrorLinkReceiveInit(void) {
@@ -1237,29 +1258,39 @@ void MirrorLinkState(void) {
       break;
     // Association state
     case MIRRORLINK_ASSOCIATE:
-    // Key-renewval state 
-    case MIRRORLINK_KEYRENEWVAL:
+    // Nonce update state 
+    case MIRRORLINK_NONCEUPDATE:
       // Remote
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
         uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
-        // Wait for associating answer
+        uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+        // Wait for answer
         if (MirrorLinkReceive(rxArray) == true) {
           bool packetOk = false;
-          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
-          // If in keyrenewval check as well correctness of packet number
+          // Decode message
+          MirrorLinkDecodeMessage(rxArray, encryptedBuffer);
+          // If association packet, use normal block decryption with XOR of 0's
+          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) {
+            // Decrypt message
+            MirrorLinkSpeckDecrypt(encryptedBuffer, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          }
+          // Use Speck CTR streaming decryption
+          else {
+            // Increment nounceCtr
+            MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
+            // Decrypt message
+            MirrorLinkSpeckCtrDecrypt(encryptedBuffer, decryptedBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
+          }
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
-          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_KEYRENEWVAL) packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
+
           if (packetOk == true) {
-            // Increase packetExchCtr value
-            MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-
             // Update second part of the key and update decryption key
-            MirrorLink.associationKey[1] = decryptedBuffer[1];
-
-            // Update decryption key (TODO: Change to initizalization vector)
-            MirrorLinkUpdateEncryptionKey(MirrorLink.key, MirrorLink.associationKey);
-
+            MirrorLink.nonce[1] = decryptedBuffer[1];
+            // Update NonceCtr
+            for (uint8_t i = 0; i < MIRRORLINK_SPECK_TEXT_LEN; i++) {
+              MirrorLink.nonceCtr[i] = MirrorLink.nonce[i];
+            }
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
             // Calculate transmission-free time based on duty cycle and time of last message
@@ -1269,15 +1300,14 @@ void MirrorLinkState(void) {
             MirrorLink.status.link = ML_LINK_UP;
           }
         }
-        // If timeout and key renewal has been attempted
+        // If timeout and nonce update has been attempted
         else if (  (MirrorLink.sendTimer <= os.now_tz())
-                 && (MirrorLink.status.mirrorlinkState == MIRRORLINK_KEYRENEWVAL)
-                 && (MirrorLink.status.keyRenewalTriedFlag == 1) ) {
+                 && (MirrorLink.status.mirrorlinkState == MIRRORLINK_NONCEUPDATE)
+                 && (MirrorLink.status.nonceUpdateTriedFlag == 1) ) {
           // Make sure we send an association command to station
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-          MirrorLinkResetToDefaultKey(MirrorLink.key);
           MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           //MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
           if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) MirrorLink.txTime = (lora.getTimeOnAir(8) / 1000);
@@ -1289,11 +1319,9 @@ void MirrorLinkState(void) {
       }
       // Station
       else {
-        // If answer to association/renewval sent correctly
+        // If answer to association/nonce update sent correctly
         // Change state to receive
         if (MirrorLinkTransmitStatus() == true) {
-          // Update decryption key (TODO: Change to initizalization vector)
-          MirrorLinkUpdateEncryptionKey(MirrorLink.key, MirrorLink.associationKey);
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLinkReceiveInit();
@@ -1309,18 +1337,19 @@ void MirrorLinkState(void) {
         // If Key Renewal timer to be able to use the channel again is overdue
         byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
         uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+        uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
         uint8_t nextChannel = 0;
-        if (MirrorLink.keyRenewalTimer <= os.now_tz()) {
-          MirrorLink.status.keyRenewalTriedFlag = 0;
-          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_KEYRENEWVAL"));
-          MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
+        // If nonce update is due
+        if (MirrorLink.nonceUpdateTimer <= os.now_tz()) {
+          MirrorLink.status.nonceUpdateTriedFlag = 0;
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_NONCEUPDATE"));
+          MirrorLink.status.mirrorlinkState = MIRRORLINK_NONCEUPDATE;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
-          
           // Process header
           // Trigger a change of keys
-          MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_CHANGEKEY;
+          MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_NONCEUPDATE;
           // Reset key renewal timer
-          MirrorLink.keyRenewalTimer = os.now_tz() + (time_t)random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
+          MirrorLink.nonceUpdateTimer = os.now_tz() + (time_t)random(MIRRORLINK_KEYCHANGE_MIN_TIME, MIRRORLINK_KEYCHANGE_MAX_TIME);
           MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
           // Send next channel to station
           if (MirrorLink.status.freqHopState == 1) {
@@ -1329,16 +1358,19 @@ void MirrorLinkState(void) {
           else {
             nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           }
-          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14));
           
           // Process payload
-          // Generate first part of future random key for the link
-          MirrorLink.associationKey[0] = (uint32_t)random(INT32_MAX);
-          plainBuffer[1] = MirrorLink.associationKey[0];
+          // Generate first part of future nonce for the link
+          MirrorLink.nonce[0] = (uint32_t)random(INT32_MAX);
+          plainBuffer[1] = MirrorLink.nonce[0];
 
+          // Increment nounceCtr
+          MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
           // Encrypt plain message
-          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+          MirrorLinkSpeckCtrEncrypt(encryptedBuffer, plainBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
+          // Encode message
+          MirrorLinkEncodeMessage(txArray, encryptedBuffer);
 
           // Send encrypted message
           MirrorLinkTransmit(txArray);
@@ -1361,15 +1393,17 @@ void MirrorLinkState(void) {
           else {
             nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           }
-          // Increase packetExchCtr value
-          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14));
 
           // Process payload -> Nothing to do
           plainBuffer[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
 
+          // Increment nounceCtr
+          MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
           // Encrypt plain message
-          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+          MirrorLinkSpeckCtrEncrypt(encryptedBuffer, plainBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
+          // Encode message
+          MirrorLinkEncodeMessage(txArray, encryptedBuffer);
 
           // Send encrypted message
           MirrorLinkTransmit(txArray);
@@ -1414,20 +1448,22 @@ void MirrorLinkState(void) {
       // Remote
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
-        uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
         // If confirmation of buffer commands received
         // change state to Buffering
         if (MirrorLinkReceive(rxArray) == true) {
+          uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
           bool packetOk = false;
-          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          // Decode message
+          MirrorLinkDecodeMessage(rxArray, encryptedBuffer);
+          // Increment nounceCtr
+          MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
+          // Decrypt message
+          MirrorLinkSpeckCtrDecrypt(encryptedBuffer, decryptedBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
-          packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
           if (packetOk == true) {
             // Process header
-            // Increase packetExchCtr value
-            MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-            
-            MirrorLink.response = (uint32_t)decryptedBuffer[1] << 16;
+             MirrorLink.response = (uint32_t)decryptedBuffer[1] << 16;
             // Gather SNR and RSSI from station
             // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
             MirrorLink.rssiRemote = (int16_t)((decryptedBuffer[1] & 0x7F0000) >> 16);
@@ -1500,7 +1536,6 @@ void MirrorLinkState(void) {
             MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-            MirrorLinkResetToDefaultKey(MirrorLink.key);
             MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             // Calculate transmission-free time based on duty cycle and time of last message
             MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
@@ -1532,7 +1567,6 @@ void MirrorLinkState(void) {
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-          MirrorLinkResetToDefaultKey(MirrorLink.key);
           MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = os.now_tz() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10000);
@@ -1549,20 +1583,24 @@ void MirrorLinkState(void) {
       // Station
       else {
         byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
-        uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
         // If commands received
         // execute and change state to Send
         if (MirrorLinkReceive(rxArray) == true) {
+          uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
           bool packetOk = false;
-          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          // Decode message
+          MirrorLinkDecodeMessage(rxArray, encryptedBuffer);
+          // Increment nounceCtr
+          MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
+          // Decrypt message
+          MirrorLinkSpeckCtrDecrypt(encryptedBuffer, decryptedBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
-          packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
           if (packetOk == true) {
             // Process header
             MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
             MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
             MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
-            MirrorLink.packetExchCtr = ((decryptedBuffer[0] & 0x3FFF) % 16383);
             MirrorLink.command = (uint32_t)decryptedBuffer[1];
             MLDEBUG_PRINT(F("Channel received:\t\t"));
             MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
@@ -1830,14 +1868,14 @@ void MirrorLinkState(void) {
             }
             // If the command received requests a key change
             // then go to change key
-            else if (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY) {
-              MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_KEYRENEWVAL"));
-              MirrorLink.status.mirrorlinkState = MIRRORLINK_KEYRENEWVAL;
-              // Update first part of the key
-              MirrorLink.associationKey[0] = decryptedBuffer[1];
+            else if (MirrorLink.status.comStationState == ML_LINK_COM_NONCEUPDATE) {
+              MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_NONCEUPDATE"));
+              MirrorLink.status.mirrorlinkState = MIRRORLINK_NONCEUPDATE;
+              // Update first part of the nonce
+              MirrorLink.nonce[0] = decryptedBuffer[1];
               // Reset Stayalive Timer
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-              MirrorLink.status.keyRenewalTriedFlag = 0;
+              MirrorLink.status.nonceUpdateTriedFlag = 0;
               MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
             }
             // If the command received requests an association
@@ -1845,11 +1883,10 @@ void MirrorLinkState(void) {
             else if (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION) {
               MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
               MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-              // Update first part of the key
-              MirrorLink.associationKey[0] = decryptedBuffer[1];
+              // Update first part of the nonce
+              MirrorLink.nonce[0] = decryptedBuffer[1];
               // Reset Stayalive Timer
               MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
-              MirrorLinkResetToDefaultKey(MirrorLink.key);
               MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_DEAD_TIME;
               MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             }
@@ -1861,7 +1898,6 @@ void MirrorLinkState(void) {
           else {
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-            MirrorLinkResetToDefaultKey(MirrorLink.key);
             MirrorLink.sendTimer = 0;
             MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             MirrorLinkReceiveInit();
@@ -1873,7 +1909,6 @@ void MirrorLinkState(void) {
         else if (MirrorLink.stayAliveTimer <= os.now_tz()) {
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-            MirrorLinkResetToDefaultKey(MirrorLink.key);
             MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             MirrorLink.sendTimer = 0;
             MirrorLinkReceiveInit();
@@ -1898,8 +1933,8 @@ void MirrorLinkWork(void) {
       break;
     // Association state 
     case MIRRORLINK_ASSOCIATE:
-    // Key-renewval state 
-    case MIRRORLINK_KEYRENEWVAL:
+    // Nonce update state 
+    case MIRRORLINK_NONCEUPDATE:
       // Remote
       if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
         // If timeout send association request
@@ -1907,19 +1942,18 @@ void MirrorLinkWork(void) {
           uint8_t nextChannel = 0;
           byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
           uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
 
           // Send association request
-
           // Process header
           // Calculate Power Level to station
           MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
           // Increase number of association attempts
           MirrorLink.associationAttempts++;
           // If not associated
-          // Reset to default key
+          // Set default channel and command association from station
           if (MirrorLink.status.mirrorlinkState == (uint32_t)MIRRORLINK_ASSOCIATE) {
             nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-            MirrorLink.packetExchCtr = random(16383);
             MirrorLink.status.comStationState = ML_LINK_COM_ASSOCIATION;
           }
           else {
@@ -1929,18 +1963,27 @@ void MirrorLinkWork(void) {
             else {
               nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             }
-            MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-            MirrorLink.status.comStationState = ML_LINK_COM_CHANGEKEY;
+            MirrorLink.status.comStationState = ML_LINK_COM_NONCEUPDATE;
           }
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14));
 
           // Process payload
-          // Generate first part of future random key for the link
-          MirrorLink.associationKey[0] = (uint32_t)random(INT32_MAX);
-          plainBuffer[1] = MirrorLink.associationKey[0];
-          
-          // Encrypt plain message
-          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+          // Generate first part of future random nonce for the link
+          MirrorLink.nonce[0] = (uint32_t)random(INT32_MAX);
+          plainBuffer[1] = MirrorLink.nonce[0];
+
+          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) {
+            // Encrypt plain message
+            MirrorLinkSpeckEncrypt(plainBuffer, encryptedBuffer, MirrorLinkSpeckKeyExp);
+          }
+          else {
+            // Increment nounceCtr
+            MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
+            // Encrypt plain message
+            MirrorLinkSpeckCtrEncrypt(encryptedBuffer, plainBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
+          }
+          // Encode message
+          MirrorLinkEncodeMessage(txArray, encryptedBuffer);
 
           // Send encrypted message
           MirrorLinkTransmit(txArray);
@@ -1948,11 +1991,11 @@ void MirrorLinkWork(void) {
           MirrorLink.status.channelNumber = nextChannel;
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
         }
-        // If association/change of keys request sent
+        // If association/nonce update request sent
         else if (MirrorLinkTransmitStatus() == true) {
           MirrorLink.sendTimer = os.now_tz() + (time_t)MIRRORLINK_RXTX_MAX_TIME;
           // First attempt made
-          MirrorLink.status.keyRenewalTriedFlag = 1;
+          MirrorLink.status.nonceUpdateTriedFlag = 1;
           // Wait for answer to association/change of keys request command
           MirrorLinkReceiveInit();
         }
@@ -1960,24 +2003,34 @@ void MirrorLinkWork(void) {
       // Station
       else {
         byte rxArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
-        uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
         // If message received and decoded propertly (it could be association or renewval)
         if (MirrorLinkReceive(rxArray) == true) {
           uint32_t decryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
           bool packetOk = false;
-          MirrorLinkDecryptMessage(rxArray, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          // Decode message
+          MirrorLinkDecodeMessage(rxArray, encryptedBuffer);
+          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) {
+            // Decrypt plain message
+            MirrorLinkSpeckDecrypt(encryptedBuffer, decryptedBuffer, MirrorLinkSpeckKeyExp);
+          }
+          else {
+            // Increment nounceCtr
+            MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
+            // Decrypt plain message
+            MirrorLinkSpeckCtrDecrypt(encryptedBuffer, decryptedBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
+          }
+
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
-          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_KEYRENEWVAL) packetOk = (packetOk && MirrorLinkCheckPacketNumber(decryptedBuffer));
           if (packetOk == true) {
             // Check if association or renewval command from station
             MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
             if (   (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION)
-                || (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY) ) {
-              MirrorLink.packetExchCtr = ((decryptedBuffer[0] & 0x3FFF) % 16383);
+                || (MirrorLink.status.comStationState == ML_LINK_COM_NONCEUPDATE) ) {
               MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
               MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
-              // Update first part of the key
-              MirrorLink.associationKey[0] = decryptedBuffer[1];
+              // Update first part of the nonce
+              MirrorLink.nonce[0] = decryptedBuffer[1];
               // Start transmission timer
               MirrorLink.sendTimer = (os.now_tz() + (time_t)(MIRRORLINK_RXTX_DEAD_TIME));
               // Reset Stayalive Timer
@@ -1987,53 +2040,51 @@ void MirrorLinkWork(void) {
               MLDEBUG_PRINTLN(F("Remote state is not association/renewval!"));
             }
           }
-          // If issue with decryption, check again with default keys
-          else {
-            MirrorLinkResetToDefaultKey(MirrorLink.key);
-            if (MirrorLinkCheckDecryptedMessage(decryptedBuffer) == true) {
-              // Check if association or renewval command from station
-              MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
-              if (   (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION)
-                  || (MirrorLink.status.comStationState == ML_LINK_COM_CHANGEKEY) ) {
-                MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
-                MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
-                // Update first part of the key
-                MirrorLink.associationKey[0] = decryptedBuffer[1];
-                // Start transmission timer
-                MirrorLink.sendTimer = (os.now_tz() + (time_t)(MIRRORLINK_RXTX_DEAD_TIME));
-              }
-            }
-          }
         }
         // Else if transmission timer is due
         else if (  (MirrorLink.sendTimer == os.now_tz())
                 && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
           byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
           uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
           if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_ASSOCIATION) MirrorLink.associationAttempts++;
 
           // Process header
           // If association request sent
-          // Increase packetExchCtr value
-          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14));
 
           // Process payload
-          // Generate second part of future random key for the link
-          MirrorLink.associationKey[1] = (uint32_t)random(INT32_MAX);
-          plainBuffer[1] = MirrorLink.associationKey[1];
+          // Generate second part of future nonce for the link
+          MirrorLink.nonce[1] = (uint32_t)random(INT32_MAX);
+          plainBuffer[1] = MirrorLink.nonce[1];
 
-          // Encrypt plain message
-          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+          if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) {
+            // Encrypt plain message
+            MirrorLinkSpeckEncrypt(plainBuffer, encryptedBuffer, MirrorLinkSpeckKeyExp);
+          }
+          else {
+            // Increment nounceCtr
+            MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
+            // Encrypt plain message
+            MirrorLinkSpeckCtrEncrypt(encryptedBuffer, plainBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
+          }
+          // Encode message
+          MirrorLinkEncodeMessage(txArray, encryptedBuffer);
 
           // Send encrypted message
           MirrorLinkTransmit(txArray);
+
+          // Update NonceCtr
+          for (uint8_t i = 0; i < MIRRORLINK_SPECK_TEXT_LEN; i++) {
+            MirrorLink.nonceCtr[i] = MirrorLink.nonce[i];
+          }
         }
         MirrorLinkStayAliveControl();
       }
       break;
     // Buffering state
     case MIRRORLINK_BUFFERING:
+      // Nothing to do
       break;
     // Send state
     case MIRRORLINK_SEND:
@@ -2044,6 +2095,7 @@ void MirrorLinkWork(void) {
             && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
           byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
           uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+          uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
 
           // Process header
           // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
@@ -2082,15 +2134,19 @@ void MirrorLinkWork(void) {
               snr = (((uint8_t)((MirrorLink.snrLocal / 2) * -1)) | 0x80);
             }
           }
-          MirrorLink.packetExchCtr = ((MirrorLink.packetExchCtr + 1) % 16383);
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14) | ((((uint32_t)MirrorLink.packetExchCtr) & 0x3FFF)));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14));
 
           // Process payload
           plainBuffer[1] = (((uint32_t)(snr & 0xFF) << 24) | (((uint32_t)(rssi & 0xFF)) << 16) | ((uint32_t)(MirrorLink.command >> 16)));
           MirrorLink.command = 0;
 
+          // Increment nounceCtr
+          MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
           // Encrypt plain message
-          MirrorLinkEncryptMessage(txArray, plainBuffer, MirrorLinkSpeckKeyExp);
+          MirrorLinkSpeckCtrEncrypt(encryptedBuffer, plainBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
+
+          // Encode message
+          MirrorLinkEncodeMessage(txArray, encryptedBuffer);
 
           // Send encrypted message
           MirrorLinkTransmit(txArray);

@@ -42,7 +42,7 @@
 #define MIRRORLINK_MIN_POWER_BUDGET        -110    // MirrorLink minimum link budget in dBm for proper reception
 #define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
 
-// Speck64/128 encryption based on NSA implementation guide
+// Speck64/128 encryption based on NSA implementation guide plus CTR cipher mode
 #define MIRRORLINK_SPECK_ROUNDS             27
 #define MIRRORLINK_SPECK_KEY_LEN            4  // 4x uint32_t
 #define MIRRORLINK_SPECK_TEXT_LEN           2  // 2x uint32_t
@@ -145,16 +145,16 @@ enum MirrorlinkErrors {
 
 // Enum for link communication phase command from station
 enum MirrorlinkComPhase {
-  ML_LINK_COM_ASSOCIATION = 0,  // Association process ongoing
-  ML_LINK_COM_CHANGEKEY,        // Change of key process ongoing
-  ML_LINK_COM_NORMAL            // Normal communication ongoing
+  ML_LINK_COM_ASSOCIATION = 0,  // Request to start association
+  ML_LINK_COM_NONCEUPDATE,      // Request to start Nonce update
+  ML_LINK_COM_NORMAL            // Request to start normal communication
 };
 
 // Enums for states of the MirrorLink driver
 enum MirrorlinkModes { 
   MIRRORLINK_INIT = 0,         // Init state
   MIRRORLINK_ASSOCIATE,        // Associate state
-  MIRRORLINK_KEYRENEWVAL,      // Key renewval state
+  MIRRORLINK_NONCEUPDATE,      // Nonce update state
   MIRRORLINK_BUFFERING,        // Buffering state
   MIRRORLINK_SEND,             // Send state
   MIRRORLINK_RECEIVE           // Receive state
