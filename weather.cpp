@@ -26,6 +26,7 @@
 #include "utils.h"
 #include "server_os.h"
 #include "weather.h"
+#include "MirrorLink.h"
 
 extern OpenSprinkler os; // OpenSprinkler object
 extern char tmp_buffer[];
@@ -74,6 +75,10 @@ static void getweather_callback(char* buffer) {
 			os.nvdata.sunrise_time = v;
 			save_nvdata = true;
 			os.weather_update_flag |= WEATHER_UPDATE_SUNRISE;
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+			// Send ML_SUNRISE
+    		MirrorLinkBuffCmd((uint8_t)ML_SUNRISE, (uint16_t)(0xFFFF & os.nvdata.sunrise_time));
+#endif
 		}
 	}
 
@@ -82,7 +87,11 @@ static void getweather_callback(char* buffer) {
 		if (v>=0 && v<=1440 && v != os.nvdata.sunset_time) {
 			os.nvdata.sunset_time = v;
 			save_nvdata = true;			
-			os.weather_update_flag |= WEATHER_UPDATE_SUNSET;			
+			os.weather_update_flag |= WEATHER_UPDATE_SUNSET;	
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+    		// Send ML_SUNSET
+    		MirrorLinkBuffCmd((uint8_t)ML_SUNSET, (uint16_t)(0xFFFF & os.nvdata.sunset_time));	
+#endif	
 		}
 	}
 

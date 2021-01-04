@@ -431,9 +431,15 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // bit 24 to 26 = Not used
       // bit 27 to 31 = cmd
     case ML_SUNRISE:      
-      // TODO:
+      // Buffer message format:
+      // bit 0 to 15 = sunrise time
+      // bit 16 to 26 = Not used
+      // bit 27 to 31 = cmd
     case ML_SUNSET:
-      // TODO:
+      // Buffer message format:
+      // bit 0 to 15 = sunset time
+      // bit 16 to 26 = Not used
+      // bit 27 to 31 = cmd
     case ML_RAINDELAYSTOPTIME:
       // TODO:
     case ML_STAYALIVE:
@@ -511,7 +517,9 @@ void MirrorLinkPeriodicCommands(void) {
   // Send regular commands (mid)
   if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_MID_PERIOD) == 0) {
     // Send ML_SUNRISE
+    MirrorLinkBuffCmd((uint8_t)ML_SUNRISE, (uint16_t)(0xFFFF & os.nvdata.sunrise_time));
     // Send ML_SUNSET
+    MirrorLinkBuffCmd((uint8_t)ML_SUNSET, (uint16_t)(0xFFFF & os.nvdata.sunset_time));
   }
   // Send regular commands (fast)
   if ((os.now_tz() % (time_t)MIRRORLINK_REGCOMMANDS_FAST_PERIOD) == 0) {
@@ -665,7 +673,7 @@ String MirrorLinkStatusPackets() {
   mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"encryption\":[";
   mirrorLinkInfo += "\"";
-  mirrorLinkInfo += "Speck 64/128";
+  mirrorLinkInfo += "Speck 64/128 CTR";
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += "],";
   mirrorLinkInfo += "\"packettime\":[";
@@ -780,25 +788,6 @@ uint8_t MirrorLinkPowerCmdEncode(void) {
 
   return powerCmd;
 }
-
-// void MirrorLinkEncryptionDecryptionTest(void) {
-//   MLDEBUG_PRINTLN(F("Encryption/Decryption Test"));
-//   uint32_t nounce[MIRRORLINK_SPECK_KEY_LEN];;
-//   uint32_t plainText[MIRRORLINK_SPECK_KEY_LEN];;
-//   MLDEBUG_PRINTLN(F("Encryption Key: "));
-//   MLDEBUG_PRINT(MirrorLink.key[0]);
-//   MLDEBUG_PRINTLN(MirrorLink.key[1]);
-//   nounce[0] = random();
-//   nounce[1] = random();
-//   MLDEBUG_PRINTLN(F("Nounce: "));
-//   MLDEBUG_PRINT(nounce[0]);
-//   MLDEBUG_PRINTLN(nounce[1]);
-//   plainText[0] = random();
-//   plainText[1] = random();
-//   MLDEBUG_PRINTLN(F("Plaintext: "));
-
-
-// }
 
 void MirrorLinkSetToDefaultKey(uint32_t *decryptionKey) {
   MLDEBUG_PRINTLN(F("Resetting to default key"));
@@ -1834,13 +1823,23 @@ void MirrorLinkState(void) {
                     MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_SUNRISE:
-                    // TODO:
+                    // Payload format: 
+                    // bit 0 to 15 = sunrise time
+                    // bit 16 to 26 = Not used
+                    // bit 27 to 31 = cmd
                     payload = MirrorLinkGetCmd((uint8_t)ML_SUNRISE);
+                    os.nvdata.sunrise_time = payload;
+                    os.nvdata_save();
                     MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_SUNSET:
-                    // TODO:
+                    // Payload format: 
+                    // bit 0 to 15 = sunset time
+                    // bit 16 to 26 = Not used
+                    // bit 27 to 31 = cmd
                     payload = MirrorLinkGetCmd((uint8_t)ML_SUNSET);
+                    os.nvdata.sunset_time = payload;
+                    os.nvdata_save();
                     MirrorLink.stayAliveTimer = os.now_tz() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_RAINDELAYSTOPTIME:
