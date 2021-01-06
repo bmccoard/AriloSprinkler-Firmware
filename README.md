@@ -27,7 +27,7 @@ Tested features:
 - Button switches work
 
 The compatible HW can be found in the following OpenSprinkler fork:
-https://github.com/arijav/AriloSprinkler-Hardware/blob/master/README.md#arilosprinkler-hardware
+https://github.com/arijav/AriloSprinkler-Hardware
 
 Final design (not yet produced, use at your own risk):
 
