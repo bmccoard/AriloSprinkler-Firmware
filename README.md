@@ -14,15 +14,25 @@ OpenSprinkler firmware variant based on the ESP32-WROOM (using port from J.Chare
 Further features:
 - Plaformio support, as well on MacOs (I am using the libraries for reference in case of compilation issues: ESP8266_SSD1306, PubSubClient, RadioLib, Time, U8g2, UIPEthernet) 
 
-The compatible HW can be found in the following OpenSprinkler fork:
-https://github.com/arijav/AriloSprinkler-Hardware/blob/master/README.md#arilosprinkler-hardware
-
 Tested features:
 - Opensprinkler SW features work
 - Lora transceiver works
 - Current measurement works
 - Valve control works
 - Button switches work
+
+The compatible HW can be found in the following OpenSprinkler fork:
+https://github.com/arijav/AriloSprinkler-Hardware/blob/master/README.md#arilosprinkler-hardware
+
+Final design (not yet produced, use at your own risk):
+
+![Final design front](https://github.com/arijav/AriloSprinkler-Hardware/blob/master/AriloSprinkler/Pictures/AriloSprinklerAC_front.jpg)
+![Final design back](https://github.com/arijav/AriloSprinkler-Hardware/blob/master/AriloSprinkler/Pictures/AriloSprinklerAC_back.jpg)
+
+Prototype:
+
+![Prototype front](https://github.com/arijav/AriloSprinkler-Hardware/blob/master/AriloSprinkler/Pictures/AriloSprinklerAC_prototype_front.jpg)
+![Prototype back](https://github.com/arijav/AriloSprinkler-Hardware/blob/master/AriloSprinkler/Pictures/AriloSprinklerAC_prototype_back.jpg)
 
 Note: This is a home made prototype. No guarantee of any kind is given. If you want a commercial product please order the regular OpenSprinkler official parts.
 
