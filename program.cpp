@@ -23,6 +23,7 @@
 
 #include <limits.h>
 #include "program.h"
+#include "defines.h"
 
 #if !defined(SECS_PER_DAY)
 #define SECS_PER_MIN	(60UL)
@@ -80,8 +81,9 @@ void ProgramData::dequeue(byte qid) {
 }
 
 /** Load program count from program file */
-void ProgramData::load_count() {
+byte ProgramData::load_count() {
 	nprograms = file_read_byte(PROG_FILENAME, 0);
+	return nprograms;
 }
 
 /** Save program count to program file */
@@ -108,7 +110,11 @@ byte ProgramData::add(ProgramStruct *buf) {
 	file_write_block(PROG_FILENAME, buf, 1+(ulong)nprograms*PROGRAMSTRUCT_SIZE, PROGRAMSTRUCT_SIZE);
 	nprograms ++;
 	save_count();
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	return nprograms;
+#else
 	return 1;
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 }
 
 /** Move a program up (i.e. swap a program with the one above it) */
@@ -143,7 +149,11 @@ byte ProgramData::del(byte pid) {
 	}
 	nprograms --;
 	save_count();
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	return nprograms;
+#else
 	return 1;
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 }
 
 // set the enable bit

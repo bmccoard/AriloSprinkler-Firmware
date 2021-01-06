@@ -26,6 +26,7 @@
 #include "server_os.h"
 #include "weather.h"
 #include "mqtt.h"
+#include "MirrorLink.h"
 
 // External variables defined in main ion file
 #if defined(ARDUINO)
@@ -187,7 +188,7 @@ void print_json_header(bool bracket=true) {
 byte findKeyVal (const char *str,char *strbuf, uint16_t maxlen,const char *key,bool key_in_pgm=false,uint8_t *keyfound=NULL) {
 	uint8_t found=0;
 #if defined(ESP8266) || defined(ESP32)
-	// for ESP8266: there are two cases:
+	// for ESP8266 and ESP32: there are two cases:
 	// case 1: if str is NULL, we assume the key-val to search is already parsed in wifi_server
 	if(str==NULL) {
 		char _key[10];
@@ -457,6 +458,75 @@ void on_ap_try_connect() {
 	}  
 }
 
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+void ml_sta_ap_control() {
+	String html = FPSTR(mirrorlink_control_html);
+	server_send_html(html);
+}
+
+void ml_sta_ap_status_general() {
+	String html = MirrorLinkStatusGeneral();
+	server_send_html(html);
+}
+
+void ml_sta_ap_status_radio() {
+	String html = MirrorLinkStatusRadio();
+	server_send_html(html);
+}
+
+void ml_sta_ap_status_packets() {
+	String html = MirrorLinkStatusPackets();
+	server_send_html(html);
+}
+
+void ml_sta_ap_chconfig() {
+	uint32_t mlPass1, mlPass2, mlPass3, mlPass4;
+	float mlDutyCycle;
+	uint8_t mlNetId, mlChannel, mlPlim;
+	bool mlFHEnable, mlATPCEnable, mlRemoteMode;
+	uint8_t oks = 0;
+	if(   (wifi_server->hasArg("netid")&&wifi_server->arg("netid").length()!=0)
+		&&(wifi_server->hasArg("mlpass1")&&wifi_server->arg("mlpass1").length()!=0)
+		&&(wifi_server->hasArg("mlpass2")&&wifi_server->arg("mlpass2").length()!=0)
+		&&(wifi_server->hasArg("mlpass3")&&wifi_server->arg("mlpass3").length()!=0)
+		&&(wifi_server->hasArg("mlpass4")&&wifi_server->arg("mlpass4").length()!=0)
+		&&(wifi_server->hasArg("mlchan")&&wifi_server->arg("mlchan").length()!=0)
+		&&(wifi_server->hasArg("mlfhop")&&wifi_server->arg("mlfhop").length()!=0)
+		&&(wifi_server->hasArg("mlplim")&&wifi_server->arg("mlplim").length()!=0)
+		&&(wifi_server->hasArg("mlatpc")&&wifi_server->arg("mlatpc").length()!=0)
+		&&(wifi_server->hasArg("dtcycl")&&wifi_server->arg("dtcycl").length()!=0)
+		&&(wifi_server->hasArg("mlrem")&&wifi_server->arg("mlrem").length()!=0)) {
+		mlNetId = strtoul(wifi_server->arg("netid").c_str(), NULL, 0);
+		mlPass1 = strtoul(wifi_server->arg("mlpass1").c_str(), NULL, 0);
+		mlPass2 = strtoul(wifi_server->arg("mlpass2").c_str(), NULL, 0);
+		mlPass3 = strtoul(wifi_server->arg("mlpass3").c_str(), NULL, 0);
+		mlPass4 = strtoul(wifi_server->arg("mlpass4").c_str(), NULL, 0);
+		mlChannel = strtoul(wifi_server->arg("mlchan").c_str(), NULL, 0);
+		mlFHEnable = (bool)strtoul(wifi_server->arg("mlfhop").c_str(), NULL, 0);
+		mlPlim = strtoul(wifi_server->arg("mlplim").c_str(), NULL, 0);
+		mlATPCEnable = (bool)strtoul(wifi_server->arg("mlatpc").c_str(), NULL, 0);
+		mlDutyCycle = wifi_server->arg("dtcycl").toFloat();
+		mlRemoteMode = (bool)strtoul(wifi_server->arg("mlrem").c_str(), NULL, 0);
+		if ((uint8_t)MirrorLinkSetNetworkId(mlNetId)) oks++;
+		if (MirrorLinkSetKeys(mlPass1, mlPass2, mlPass3, mlPass4)) oks++;
+		if (MirrorLinkSetChannel(mlChannel)) oks++;
+		if (MirrorLinkSetFrequencyHoppingStatus(mlFHEnable)) oks++;
+		if (MirrorLinkSetMaxPower(mlPlim)) oks++;
+		if (MirrorLinkSetATPCStatus(mlATPCEnable)) oks++;
+		if (MirrorLinkSetStationType(mlRemoteMode)) oks++;
+		if (MirrorLinkSetDutyCycle(mlDutyCycle)) oks++;
+		if (oks == 8) {
+			server_send_result(HTML_SUCCESS);
+		}
+		else {
+			server_send_result(HTML_DATA_MISSING, "Incorrect input data");
+		}
+	}
+	else {
+		server_send_result(HTML_DATA_MISSING, "Incorrect input data");
+	}
+}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 #endif
 
 
@@ -813,6 +883,16 @@ void server_delete_program() {
 		pd.eraseall();
 	} else if (pid < pd.nprograms) {
 		pd.del(pid);
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send program deletion request
+			// bit 0 to 6 = program number (max. is 40)
+			// bit 7 = Add (1) or remove (0)
+			// bit 8 to 16 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (uint32_t)(pid & 0xFF));
+		}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	} else {
 		handle_return(HTML_DATA_OUTOFBOUND);
 	}
@@ -872,6 +952,9 @@ void server_change_program() {
 #endif
 
 	byte i;
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	bool newProgram = false;
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 	ProgramStruct prog;
 
@@ -956,11 +1039,87 @@ void server_change_program() {
 		pd.drem_to_absolute(prog.days);
 	}
 
+    Serial.println(F("Starting to send program messages"));
+	Serial.println(pid);
+
 	if (pid==-1) {
-		if(!pd.add(&prog)) handle_return(HTML_DATA_OUTOFBOUND);
+		byte numPrograms = (int32_t)pd.add(&prog);
+		if(!numPrograms) {
+			handle_return(HTML_DATA_OUTOFBOUND);
+		}
+		else {
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+			if (MirrorLinkGetStationType() == ML_REMOTE) {
+				newProgram = true;
+				if (numPrograms > 0) {
+					pid = numPrograms - 1;
+				}
+				else {
+					pid = numPrograms;
+				}
+				// Program name needs to be modified to match the pid number
+				sprintf_P(prog.name, "%d", pid);
+				if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
+			}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		}
 	} else {
 		if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
 	}
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	if (MirrorLinkGetStationType() == ML_REMOTE) {
+		// Send program data over MirrorLink
+		uint32_t payload = 0;
+
+		if (newProgram == true) {
+			// Send program creation request
+			// bit 0 to 6 = program number (max. is 40)
+			// bit 7 = Add (1) or remove (0)
+			// bit 8 to 16 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
+		}
+
+		// Send program starttime
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 to 8 = start time number (max. is 4 for each program)
+		// bit 9 to 24 = start time
+		// bit 25 = Starttime type
+		// bit 26 = Not used
+		// bit 27 to 31 = cmd
+		for (i=0;i<MAX_NUM_STARTTIMES;i++) {
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
+		}
+
+		// Send program duration
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 to 14 = sid
+		// bit 15 to 25 = time (min)
+		// bit 26 = Not used
+		// bit 27 to 31 = cmd
+		for(i=0;i<os.nstations;i++) {
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)(((uint32_t)(0x7FF & ((prog.durations[i]) / 60)) << 15) | (((uint32_t)i) << 7) | (uint32_t)(pid)));
+		}
+
+		// Send program day setup
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 to 22 = days
+		// bit 23 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
+
+		// Send program main setup
+		// bit 0 to 6 = program number (max. is 40)
+		// bit 7 = enable/disable
+		// bit 8 = use weather
+		// bit 9 to 10 = Odd/even restriction
+		// bit 11 to 12 = schedule type
+		// bit 13 to 26 = Not used
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
+	}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	handle_return(HTML_SUCCESS);
 }
 
@@ -1363,7 +1522,7 @@ void server_change_options()
 	char *p = NULL;
 	if(!process_password()) return;
 	if (m_client)
-		p = get_buffer;  
+		p = get_buffer;
 #else  
 	char *p = get_buffer;
 #endif
@@ -1420,6 +1579,37 @@ void server_change_options()
 
 	if (findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("loc"), true)) {
 		urlDecode(tmp_buffer);
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send location through Mirrorlink:
+			char location[TMP_BUFFER_SIZE+MAX_SOPTS_SIZE+1];
+			strcpy_P(location, tmp_buffer);
+			char * latitude = strtok((char *)location, ",");
+			char * longitude = strtok(NULL, ",");
+
+			// Encode latitude and longitude in 23 bit ints
+			const float weight = 180./(1 << 23);
+			int32_t fp_lat = (int) (0.5f + atof(latitude) / weight);
+			int32_t fp_lon = (int) (0.5f + atof(longitude) / weight);
+
+			// Send station command over MirrorLink
+			// Payload format: 
+			// bit 0 to 23 = longitude
+			// bit 24 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_LONGITUDE, (uint32_t)(0xFFFFFF & fp_lon));
+
+			// Send station command over MirrorLink
+			// Payload format: 
+			// bit 0 to 23 = latitude
+			// bit 24 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_LATITUDE, (uint32_t)(0xFFFFFF & fp_lat));
+
+		}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+
 		if (os.sopt_save(SOPT_LOCATION, tmp_buffer)) { // if location string has changed
 			weather_change = true;
 		}
@@ -1583,7 +1773,6 @@ void server_change_manual() {
 #else
 	char *p = get_buffer;
 #endif
-
 	int sid=-1;
 	if (findKeyVal(p, tmp_buffer, TMP_BUFFER_SIZE, PSTR("sid"), true)) {
 		sid=atoi(tmp_buffer);
@@ -1627,6 +1816,19 @@ void server_change_manual() {
 				q->dur = timer;
 				q->sid = sid;
 				q->pid = 99;	// testing stations are assigned program index 99
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+				if (MirrorLinkGetStationType() == ML_REMOTE) {
+					// Send station command over MirrorLink
+					// Payload format: 
+					// bit 0 = status (1 = On, 0 = Off)
+					// bit 1 to 8 = sid
+					// bit 9 to 24 = time(sec)
+					// bit 25 to 26 = Not used
+					// bit 27 to 31 = cmd
+					MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (uint32_t)(((uint32_t)(q->dur) << 9) | (((uint32_t)(sid)) << 1) | (uint32_t)1));
+				}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+
 				schedule_all_stations(curr_time);
 			} else {
 				handle_return(HTML_NOT_PERMITTED);
@@ -1635,6 +1837,18 @@ void server_change_manual() {
 			handle_return(HTML_DATA_MISSING);
 		}
 	} else {	// turn off station
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send station command over MirrorLink
+			// Payload format: 
+			// bit 0 = status (1 = On, 0 = Off)
+			// bit 1 to 8 = sid
+			// bit 9 to 24 = time(sec)
+			// bit 25 to 26 = Not used
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0xFFFF & sid) << 1));
+		}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 		turn_off_station(sid, curr_time);
 	}
 	handle_return(HTML_SUCCESS);
@@ -2046,7 +2260,15 @@ void start_server_client() {
 	wifi_server->on("/index.html", server_home);
 	wifi_server->on("/update", HTTP_GET, on_sta_update); // handle firmware update
 	wifi_server->on("/update", HTTP_POST, on_sta_upload_fin, on_sta_upload);	
-	
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	wifi_server->on("/mlcontrol", ml_sta_ap_control);
+	wifi_server->on("/mlstatusgeneral", ml_sta_ap_status_general);
+	wifi_server->on("/mlstatusradio", ml_sta_ap_status_radio);
+	wifi_server->on("/mlstatuspackets", ml_sta_ap_status_packets);
+	wifi_server->on("/mlchconfig", ml_sta_ap_chconfig);
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+
 	// set up all other handlers
 	char uri[4];
 	uri[0]='/';
@@ -2073,6 +2295,14 @@ void start_server_ap() {
 	wifi_server->on("/update", HTTP_GET, on_ap_update);
 	wifi_server->on("/update", HTTP_POST, on_ap_upload_fin, on_ap_upload);
 	wifi_server->onNotFound(on_ap_home);
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	wifi_server->on("/mlcontrol", ml_sta_ap_control);
+	wifi_server->on("/mlstatusgeneral", ml_sta_ap_status_general);
+	wifi_server->on("/mlstatusradio", ml_sta_ap_status_radio);
+	wifi_server->on("/mlstatuspackets", ml_sta_ap_status_packets);
+	wifi_server->on("/mlchconfig", ml_sta_ap_chconfig);
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 	// set up all other handlers
 	char uri[4];

@@ -28,6 +28,7 @@
 #include "weather.h"
 #include "server_os.h"
 #include "mqtt.h"
+#include "MirrorLink.h"
 
 #if defined(ARDUINO)
 	EthernetServer *m_server = NULL;
@@ -214,7 +215,19 @@ void ui_state_machine() {
 					ui_state = UI_STATE_DISP_IP;					
 				} else {	// if no other button is clicked, reboot
 					if(!ui_confirm(PSTR("Reboot device?"))) {ui_state = UI_STATE_DEFAULT; break;}
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+					if (MirrorLinkGetStationType() == ML_REMOTE) {
+						// Send program creation request
+						// bit 0 to 26 = free
+						// bit 27 to 31 = cmd
+						MirrorLinkBuffCmd((uint8_t)ML_STATIONREBOOT, (uint32_t)(0));
+					}
+					else {
+						os.reboot_dev(REBOOT_CAUSE_BUTTON);
+					}
+#else
 					os.reboot_dev(REBOOT_CAUSE_BUTTON);
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 				}
 			} else {	// clicking B2: display MAC
 				os.lcd.clear(0, 1);
@@ -297,10 +310,13 @@ void do_setup() {
 
 	DEBUG_BEGIN(115200);
 	
-	os.begin();					 // OpenSprinkler init
+	os.begin();			 // OpenSprinkler init
 	os.options_setup();  // Setup options
-
-	pd.init();						// ProgramData init
+	// Initialize MirrorLink LORA module if present
+#if defined(ESP32)
+	MirrorLinkInit();
+#endif
+	pd.init();			 // ProgramData init
 
 	setSyncInterval(RTC_SYNC_INTERVAL);  // RTC sync interval
 	// if rtc exists, sets it as time sync source
@@ -1015,6 +1031,11 @@ void do_loop()
 
 	}
 
+	// MirrorLink LORA module transceiver state machine
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	MirrorLinkMain();
+#endif
+
 	#if !defined(ARDUINO)
 		delay(1); // For OSPI/OSBO/LINUX, sleep 1 ms to minimize CPU usage
 	#endif
@@ -1052,6 +1073,68 @@ void check_weather() {
 		GetWeather();
 	}
 }
+
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+/** Schedule test station
+ * This function schedules a station to turn on for a specific time duration
+ */
+void schedule_test_station(byte sid, uint16_t duration) {
+	byte pid = 99;
+	unsigned long curr_time = os.now_tz();
+	RuntimeQueueStruct *q = NULL;
+	byte sqi = pd.station_qid[sid];
+	reset_all_stations_immediate();
+	// check if the station already has a schedule
+	if (sqi!=0xFF) {	// if we, we will overwrite the schedule
+		q = pd.queue+sqi;
+	} else {	// otherwise create a new queue element
+		q = pd.enqueue();
+	}
+	Serial.print(F("SQI: "));
+	Serial.println(sqi);
+	Serial.print(F("SID to enable: "));
+	Serial.println(sid);
+	if (duration > 0) {
+		if (q) {
+			q->st = 0;
+			q->dur = duration;
+			q->sid = sid;
+			q->pid = pid;
+			schedule_all_stations(curr_time);
+		} else {
+			// queue is full
+		}
+	}
+	else {
+		turn_off_station(sid, curr_time);
+	}
+}
+
+/** Change program data 
+ * This function changes program data or adds a new one if non existing
+ */
+void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog) {
+	if (pid == pd.nprograms) {
+		pd.add(prog);
+	} else if ((pid < pd.nprograms) && (pid >= 0)) {
+		pd.modify((byte)pid, prog);
+	} else {
+		// Inconsistency, sync. fail in program, erase all
+		pd.eraseall();
+	}
+}
+
+/** Delete program data 
+ * This function deletes program data
+ */
+void delete_program_data(int32_t pid) {
+	if (pid > -1) {
+		pd.del(pid);
+	} else {
+		pd.eraseall();
+	}
+}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 /** Turn on a station
  * This function turns on a scheduled station
@@ -1309,7 +1392,7 @@ void push_message(int type, uint32_t lval, float fval, const char* sval) {
 	}
 
 	switch(type) {
-		case  NOTIFY_STATION_ON:
+		case NOTIFY_STATION_ON:
 
 			// todo: add IFTTT support for this event as well
 			if (os.mqtt.enabled()) {
@@ -1798,6 +1881,19 @@ void perform_ntp_sync() {
 			setTime(t);
 			RTC.set(t);
 			DEBUG_PRINTLN(RTC.get());
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+			if (MirrorLinkGetStationType() == ML_REMOTE) {
+				// Send Time commands over MirrorLink
+				// Payload format:
+				// bit 0 to 7 = Time zone
+				// bit 27 to 31 = cmd
+				MirrorLinkBuffCmd((uint8_t)ML_TIMEZONESYNC, (uint32_t)(0xFF & (os.iopts[IOPT_TIMEZONE])));
+				// Payload format: 
+				// bit 0 to 26 = Unix Timestamp in minutes! not seconds
+				// bit 27 to 31 = cmd
+				MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (t / 60)));
+			}
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 			#if !defined(ESP8266) && !defined(ESP32)
 			// if rtc was uninitialized and now it is, restart
 			if(rtc_zero && now()>978307200L) {

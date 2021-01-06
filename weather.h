@@ -25,12 +25,12 @@
 #ifndef _WEATHER_H
 #define _WEATHER_H
 
-#define WEATHER_UPDATE_SUNRISE	0x01
+#define WEATHER_UPDATE_SUNRISE	    0x01
 #define WEATHER_UPDATE_SUNSET		0x02
 #define WEATHER_UPDATE_EIP			0x04
-#define WEATHER_UPDATE_WL				0x08
-#define WEATHER_UPDATE_TZ				0x10
-#define WEATHER_UPDATE_RD				0x20
+#define WEATHER_UPDATE_WL           0x08
+#define WEATHER_UPDATE_TZ           0x10
+#define WEATHER_UPDATE_RD           0x20
 
 void GetWeather();
 

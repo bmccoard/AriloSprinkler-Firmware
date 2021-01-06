@@ -25,7 +25,7 @@
 #include "server_os.h"
 #include "gpio.h"
 #include "testmode.h"
-#include "rf_lora.h"
+#include "MirrorLink.h"
 
 /** Declare static data members */
 OSMqtt OpenSprinkler::mqtt;
@@ -167,6 +167,30 @@ const char iopt_json_names[] PROGMEM =
 	"subn4"
 	"wimod"
 	"reset"
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	"mla01"
+	"mla02"
+	"mla03"
+	"mla04"
+	"mla05"
+	"mla06"
+	"mla07"
+	"mla08"
+	"mla09"
+	"mla10"
+	"mla11"
+	"mla12"
+	"mla13"
+	"mla14"
+	"mla15"
+	"mla16"
+	"mlnid"
+	"mlcha"
+	"mlpli"
+	"mldc1"
+	"mldc2"
+	"mltyp"
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	;
 
 // for String options
@@ -252,8 +276,33 @@ const char iopt_prompts[] PROGMEM =
 	"Subnet mask3:   "
 	"Subnet mask4:   "
 	"WiFi mode?      "
-	"Factory reset?  ";
-	
+	"Factory reset?  "
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	"ML AssocKey  1: "
+	"ML AssocKey  2: "
+	"ML AssocKey  3: "
+	"ML AssocKey  4: "
+	"ML AssocKey  5: "
+	"ML AssocKey  6: "
+	"ML AssocKey  7: "
+	"ML AssocKey  8: "
+	"ML AssocKey  9: "
+	"ML AssocKey 10: "
+	"ML AssocKey 11: "
+	"ML AssocKey 12: "
+	"ML AssocKey 13: "
+	"ML AssocKey 14: "
+	"ML AssocKey 15: "
+	"ML AssocKey 16: "
+	"ML NetworkID:   "
+	"ML Channel Num: "
+	"ML Max. Power:  "
+	"ML DutyCycle 1: "
+	"ML DutyCycle 1: "
+	"ML StationType: "
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	;
+
 // string options do not have prompts 
 
 /** Option maximum values (stored in PROGMEM to reduce RAM usage) */
@@ -321,7 +370,33 @@ const byte iopt_max[] PROGMEM = {
 	255,
 	255,
 	255,
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	255,
+	15,
+	30,
+	255,
+	255,
+	1,
+#else
 	1
+#endif
 };
 
 // string options do not have maximum values
@@ -396,7 +471,33 @@ byte OpenSprinkler::iopts[] = {
 	255,// subnet mask 3
 	0,
 	WIFI_M_AP, // wifi mode
-	0		// reset
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+	0,   // reset
+	3,   // association key byte 1
+	2,   // association key byte 2
+	1,   // association key byte 3
+	0,   // association key byte 4
+	11,  // association key byte 5
+	10,  // association key byte 6
+	9,   // association key byte 7
+	8,   // association key byte 8
+	19,  // association key byte 9
+	18,  // association key byte 10
+	17,  // association key byte 11
+	16,  // association key byte 12
+	27,  // association key byte 13
+	26,  // association key byte 14
+	25,  // association key byte 15
+	24,  // association key byte 16
+	148, // MirrorLink Network ID
+	0,   // default Channel
+	30,  // maximum power
+	0,   // duty cycle byte 1
+	10,  // duty cycle byte 2
+	0,   // default station type
+#else
+	0  // reset
+#endif
 };
 
 /** String option values (stored in RAM) */
@@ -503,7 +604,7 @@ byte OpenSprinkler::start_network() {
 #elif defined(ESP32)
         MDNS.addService("_http", "_tcp", 80 );
         MDNS.addServiceTxt("_http", "_tcp", "path", "/");
-//      MDNS.addService("_http", "_udp", 80 );
+      //MDNS.addService("_http", "_udp", 80 );
       wifi_server = new WebServer(80);    
     } else {
 //      MDNS.addService("_http", "_tcp", httpport);
@@ -714,11 +815,6 @@ void OpenSprinkler::begin() {
 
 #if defined(ESP32)
     if(!Wire.begin(SDA_PIN,SCL_PIN)) DEBUG_PRINT("Error initiating I2C");
-	
-	// Initialize LORA module if present
-	#if defined(LORA_ENABLE)
-	loraInit();
-	#endif
 
 #ifdef ENABLE_DEBUG
     scan_i2c();
@@ -819,7 +915,7 @@ void OpenSprinkler::begin() {
 		}
 	}
 #else
-	// revision 2 only for ESP32
+	// revision 3 only for ESP32
 	drio = new PCA9555(ACDR_I2CADDR);
 	mainio = drio;
 	hw_rev = 3;
@@ -835,6 +931,7 @@ void OpenSprinkler::begin() {
 	PIN_LATCH_COM = V2_PIN_LATCH_COM;
 	PIN_SENSOR1 = V2_PIN_SENSOR1;
 	PIN_SENSOR2 = V2_PIN_SENSOR2;
+
 #endif	
 	
 	/* detect expanders */
@@ -842,7 +939,6 @@ void OpenSprinkler::begin() {
 		expanders[i] = NULL;
 	DEBUG_PRINTLN("Starting to detect expanders");
 	detect_expanders();
-
 
 #else
 
@@ -1152,15 +1248,6 @@ void OpenSprinkler::apply_all_station_bits() {
 			reg = (reg&0xFF00) | station_bits[0]; // output channels are the low 8-bit
 			drio->i2c_write(NXP_OUTPUT_REG, reg); // write value to register
 		}
-#if defined(ESP32)
-			else if(drio->type == IOEXP_TYPE_BUILD_IN_GPIO){
-        if (STATION_LOGIC)
-          drio->i2c_write(station_bits[0]);
-        else
-          drio->i2c_write(~station_bits[0]);
-		}
-
-#endif     
 		// Handle expansion boards
 		for(int i=0;i<MAX_EXT_BOARDS/2;i++) {
 			uint16_t data = station_bits[i*2+2];
