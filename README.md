@@ -16,6 +16,7 @@ Further features:
 - Encrypted lora protocol with Speck64/128 block cipher and CTR cipher mode. Protected against manipulation (the repetition of an intercepted command will not induce any actions neither on the remote nor on the station)
 - Frequency Hopping, ATPC (Adaptive Transmission Power Control, based on SNR/RSSI) as well as Duty Cycle options have been added to comply with most country RF regulations 
 - MirrorLink control panel (http://device_ip/mlcontrol):
+
 ![MirrorLink Control Panel](https://github.com/arijav/AriloSprinkler-Firmware/blob/master/pictures/AriloSprinkler_MirrorLink_Control.jpg)
 
 Tested features:
