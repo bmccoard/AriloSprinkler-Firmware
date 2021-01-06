@@ -932,8 +932,6 @@ void OpenSprinkler::begin() {
 	PIN_SENSOR1 = V2_PIN_SENSOR1;
 	PIN_SENSOR2 = V2_PIN_SENSOR2;
 
-  	drio = new BUILD_IN_GPIO(); // to handle gpio's on ESP32 board
-  	drio->set_pins_output_mode() ;
 #endif	
 	
 	/* detect expanders */
@@ -1250,15 +1248,6 @@ void OpenSprinkler::apply_all_station_bits() {
 			reg = (reg&0xFF00) | station_bits[0]; // output channels are the low 8-bit
 			drio->i2c_write(NXP_OUTPUT_REG, reg); // write value to register
 		}
-#if defined(ESP32)
-			else if(drio->type == IOEXP_TYPE_BUILD_IN_GPIO){
-        if (STATION_LOGIC)
-          drio->i2c_write(station_bits[0]);
-        else
-          drio->i2c_write(~station_bits[0]);
-		}
-
-#endif     
 		// Handle expansion boards
 		for(int i=0;i<MAX_EXT_BOARDS/2;i++) {
 			uint16_t data = station_bits[i*2+2];
