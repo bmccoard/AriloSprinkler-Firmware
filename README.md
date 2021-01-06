@@ -13,7 +13,9 @@ OpenSprinkler firmware variant based on the ESP32-WROOM (using port from J.Chare
 
 Further features:
 - Plaformio support, as well on MacOs (I am using the libraries for reference in case of compilation issues: ESP8266_SSD1306, PubSubClient, RadioLib, Time, U8g2, UIPEthernet)
-- Encrypted lora protocol with Speck64/128 block cipher and CTR cipher mode. Protected against manipulation (the repetition of an intercepted command will not induce any actions neither on the remote nor on the station)  
+- Encrypted lora protocol with Speck64/128 block cipher and CTR cipher mode. Protected against manipulation (the repetition of an intercepted command will not induce any actions neither on the remote nor on the station)
+- Frequency Hopping, ATPC (Adaptive Transmission Power Control, based on SNR/RSSI) as well as Duty Cycle options have been added to comply with most country RF regulations 
+- MirrorLink control panel
 
 Tested features:
 - Opensprinkler SW features work
