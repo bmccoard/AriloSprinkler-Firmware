@@ -39,7 +39,7 @@
 #define MIRRORLINK_MAX_POWER                16     // MirrorLink maximum transmission power in dBm
 #define MIRRORLINK_MIN_POWER               -17     // MirrorLink minimum transmission power in dBm
 #define MIRRORLINK_AMPLIF_FACTOR            14     // MirrorLink amplification factor in dB (amplifier plus antenna, for plain E22-900T30S with 0dB antenna is 14dBm -> for 16dBm tx, amplification up to 30dBm)
-#define MIRRORLINK_MIN_POWER_BUDGET        -110    // MirrorLink minimum link budget in dBm for proper reception
+#define MIRRORLINK_MIN_POWER_BUDGET        -90     // MirrorLink minimum link budget in dBm for proper reception
 #define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
 
 // Speck64/128 encryption based on NSA implementation guide plus CTR cipher mode
