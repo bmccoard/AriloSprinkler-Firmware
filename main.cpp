@@ -1024,11 +1024,12 @@ void do_loop()
 			reboot_notification = 0;
 			push_message(NOTIFY_REBOOT);
 		}
-
-		// LORA module transceiver state machine
-		#if defined(ESP32) && defined(LORA_ENABLE)
-		#endif
-
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+		if (MirrorLinkGetStationType() == ML_REMOTE) {
+			// Send periodic MirrorLink commands to remote
+			MirrorLinkPeriodicCommands();
+		}
+#endif
 	}
 
 	// MirrorLink LORA module transceiver state machine
