@@ -54,8 +54,8 @@ float MirrorLinkFreqs[ML_CH_MAX] = {
   867.475,    // ML_CH_11 -> 867.475MHz to 867.6MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
   869.4,      // ML_CH_12 -> 869.4MHz to 869.525MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
   869.435,    // ML_CH_13 -> 869.435MHz to 869.560MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.470,    // ML_CH_14 -> 869.470MHz to 869.595MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.525,    // ML_CH_15 -> 869.525MHz to 869.65MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  869.470,    // ML_CH_14 -> 869.470MHz to 869.595MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  869.525,    // ML_CH_15 -> 869.525MHz to 869.65MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
 };
 
 // Intern program to store program data sent by remote
