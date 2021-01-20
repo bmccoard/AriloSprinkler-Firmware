@@ -40,9 +40,15 @@
 
 // Frequency hopping array (Default values acc. to German Bundesagenturnetz Vfg 12/2020)
 float MirrorLinkFreqs[ML_CH_MAX] = {
+#if defined(ML_LOCALTEST)
+  866.2,      // ML_CH_0 -> 866.2MHz to 866.325MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  866.235,    // ML_CH_1 -> 866.235MHz to 866.360MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  866.275,    // ML_CH_2 -> 866.275MHz to 866.4MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+#else
   865.6,      // ML_CH_0 -> 865.6MHz to 865.725MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
   865.635,    // ML_CH_1 -> 865.635MHz to 865.760MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
   865.675,    // ML_CH_2 -> 865.675MHz to 865.8MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+#endif
   866.2,      // ML_CH_3 -> 866.2MHz to 866.325MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
   866.235,    // ML_CH_4 -> 866.235MHz to 866.360MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
   866.275,    // ML_CH_5 -> 866.275MHz to 866.4MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
@@ -99,34 +105,35 @@ typedef union {
 } MirrorLinkStateBitfield;
 
 struct MIRRORLINK {
-  uint32_t key[MIRRORLINK_SPECK_KEY_LEN];             // Encryption key for the Link
-  uint32_t nonceCtr[MIRRORLINK_SPECK_TEXT_LEN];       // Nonce for the cipher plus counter
-  uint32_t nonce[MIRRORLINK_SPECK_TEXT_LEN];          // Nonce for the cipher
-  uint32_t sendTimer;                                 // Timer in seconds to control send timing
-  MirrorLinkStateBitfield status;                     // Bittfield including states as well as several flags
-  uint32_t stayAliveTimer;                            // Timer in seconds to control if remote and station are still connected
-  uint32_t stayAliveMaxPeriod;                        // Maximum period in seconds configured to control if remote and station are still connected
-  uint32_t nonceUpdateTimer;                          // Timer to control the nonce update process
-  uint32_t packetsSent;                               // Number of sent packets
-  uint32_t packetsReceived;                           // Number of received packets
-  uint32_t buffer[MIRRORLINK_BUFFERLENGTH];           // Buffer for queued commands to be sent to station
-  uint32_t response;                                  // Response from the station to the last command sent
-  uint32_t txTime;                                    // Time used to transmit a payload in milliseconds
-  uint32_t command;                                   // Command to be executed by the station
-  int32_t latitude;                                   // Latitude of the remote station
-  int32_t longitude;                                  // Longitude of the remote station
-  int16_t moduleState;                                // LORA module state
-  uint16_t associationAttempts;                       // Counter to control the number of association attempts
-  int16_t snrLocal;                                   // Local SNR (local reception)
-  int16_t rssiLocal;                                  // Local RSSI (local reception)
-  uint16_t dutyCycle;                                 // Maximum duty cycle in tenths of % (1 = 0.1)
-  int16_t snrRemote;                                  // Remote SNR (remote reception)
-  int16_t rssiRemote;                                 // Remote RSSI (remote reception)
-  uint8_t bufferedCommands;                           // Number of buffered commands to be sent
-  uint8_t indexBufferHead;                            // Index of the first element in the command buffer
-  uint8_t indexBufferTail;                            // Index of the last element in the command buffer   
-  int8_t powerLevel;                                  // Transmission power
-  int8_t powerMax;                                    // Maximum allowed transmission power
+  uint32_t key[MIRRORLINK_SPECK_KEY_LEN];                        // Encryption key for the Link
+  uint32_t nonceCtr[MIRRORLINK_SPECK_TEXT_LEN];                  // Nonce for the cipher plus counter
+  uint32_t nonce[MIRRORLINK_SPECK_TEXT_LEN];                     // Nonce for the cipher
+  uint32_t sendTimer;                                            // Timer in seconds to control send timing
+  MirrorLinkStateBitfield status;                                // Bittfield including states as well as several flags
+  uint32_t stayAliveTimer;                                       // Timer in seconds to control if remote and station are still connected
+  uint32_t stayAliveMaxPeriod;                                   // Maximum period in seconds configured to control if remote and station are still connected
+  uint32_t nonceUpdateTimer;                                     // Timer to control the nonce update process
+  uint32_t packetsSent;                                          // Number of sent packets
+  uint32_t packetsReceived;                                      // Number of received packets
+  uint32_t response;                                             // Response from the station to the last command sent
+  uint32_t txTime;                                               // Time used to transmit a payload in milliseconds
+  uint32_t command[ML_CMD_MAX];                                  // Array containing 46 bit (14+32) bits of the command to be executed by the station
+  int32_t latitude;                                              // Latitude of the remote station
+  int32_t longitude;                                             // Longitude of the remote station
+  uint32_t payloadBuffer[ML_CMD_MAX][MIRRORLINK_BUFFERLENGTH];   // Buffer for queued payloads (46 bit each) to be sent to station
+  int16_t moduleState;                                           // LORA module state
+  uint16_t associationAttempts;                                  // Counter to control the number of association attempts
+  int16_t snrLocal;                                              // Local SNR (local reception)
+  int16_t rssiLocal;                                             // Local RSSI (local reception)
+  uint16_t dutyCycle;                                            // Maximum duty cycle in tenths of % (1 = 0.1)
+  int16_t snrRemote;                                             // Remote SNR (remote reception)
+  int16_t rssiRemote;                                            // Remote RSSI (remote reception)
+  uint8_t responseCommand;                                       // Response command from the station to the last command sent
+  uint8_t bufferedCommands;                                      // Number of buffered commands to be sent
+  uint8_t indexBufferHead;                                       // Index of the first element in the command buffer
+  uint8_t indexBufferTail;                                       // Index of the last element in the command buffer   
+  int8_t powerLevel;                                             // Transmission power
+  int8_t powerMax;                                               // Maximum allowed transmission power
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
@@ -448,22 +455,23 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // bit 27 to 31 = cmd
       if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
         MirrorLink.bufferedCommands++;
-        MirrorLink.buffer[MirrorLink.indexBufferHead] = (((uint32_t)(0x1F & (uint16_t)cmd) << 27) | payload);
+        MirrorLink.payloadBuffer[ML_CMD_1][MirrorLink.indexBufferHead] = ((uint32_t)(0x3F & (uint16_t)cmd) << CMD_REMOTE_POS);
+        MirrorLink.payloadBuffer[ML_CMD_2][MirrorLink.indexBufferHead] = payload;
         MirrorLink.indexBufferHead = (MirrorLink.indexBufferHead + 1) % MIRRORLINK_BUFFERLENGTH;
       }
       break;
   }
 }
 
-uint32_t MirrorLinkGetCmd(uint8_t cmd)
+void MirrorLinkGetCmd(uint8_t cmd, uint32_t *payload)
 {
-  uint32_t payload = 0;
-  if(cmd == (MirrorLink.command >> 27)) {
-    payload = (MirrorLink.command & 0x7FFFFFF);
+  if(cmd == ((MirrorLink.command[ML_CMD_1] & CMD_REMOTE_MASK) >> CMD_REMOTE_POS)) {
+    payload[ML_CMD_1] = (MirrorLink.command[ML_CMD_1] & PAYLOAD1_REMOTE_MASK);
+    payload[ML_CMD_2] = MirrorLink.command[ML_CMD_2];
   }
   // Empty command but cmd part to send answer to remote station
-  MirrorLink.command &= 0xF8000000;
-  return payload;
+  MirrorLink.command[ML_CMD_1] &= HEADER_MASK;
+  MirrorLink.command[ML_CMD_2] = 0;
 }
 
 void MirrorLinkPeriodicCommands(void) {
@@ -849,7 +857,12 @@ void MirrorLinkInit(void) {
   MirrorLink.associationAttempts = 0;
   MirrorLink.dutyCycle = (((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE1] << 8) | ((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE2]));
   MirrorLink.bufferedCommands = 0;
-  for (uint8_t i = 0; i < MIRRORLINK_BUFFERLENGTH; i++) MirrorLink.buffer[i] = 0;
+  for (uint8_t i = 0; i < ML_CMD_MAX; i++) {
+    for (uint8_t j = 0; j < MIRRORLINK_BUFFERLENGTH; j++) {
+      MirrorLink.payloadBuffer[i][j] = 0;
+    }
+  }
+  for (uint8_t i = 0; i < ML_CMD_MAX; i++) MirrorLink.command[i] = 0;
   MirrorLink.indexBufferHead = 0;
   MirrorLink.indexBufferTail = 0;
   MirrorLink.snrRemote = -200;
@@ -1380,10 +1393,10 @@ void MirrorLinkState(void) {
           else {
             nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           }
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.payloadBuffer[ML_CMD_1][MirrorLink.indexBufferTail]) & 0x3FFF)));
 
           // Process payload -> Nothing to do
-          plainBuffer[1] = MirrorLink.buffer[MirrorLink.indexBufferTail];
+          plainBuffer[1] = MirrorLink.payloadBuffer[ML_CMD_2][MirrorLink.indexBufferTail];
 
           // Increment nounceCtr
           MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);
@@ -1429,7 +1442,7 @@ void MirrorLinkState(void) {
           MirrorLinkReceiveInit();
         }
       }
-      break;
+      break; 
     // Receive state
     case MIRRORLINK_RECEIVE:
       // Remote
@@ -1450,44 +1463,44 @@ void MirrorLinkState(void) {
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
           if (packetOk == true) {
             // Process header
-             MirrorLink.response = (uint32_t)decryptedBuffer[1] << 16;
+            MirrorLink.responseCommand = (uint32_t)(decryptedBuffer[0] >> CMD_STATION_POS) & 0x3F;
+            MirrorLink.response = (uint32_t)(decryptedBuffer[1] & PAYLOAD2_STATION_MASK);
             // Gather SNR and RSSI from station
             // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
-            MirrorLink.rssiRemote = (int16_t)((decryptedBuffer[1] & 0x7F0000) >> 16);
-            if (decryptedBuffer[1] & 0x800000) {
+            MirrorLink.rssiRemote = (int16_t)(((decryptedBuffer[1] & RSSI_STATION_P2_MASK) >> RSSI_STATION_P2_POS) | ((decryptedBuffer[0] & RSSI_STATION_P1_MASK) << RSSI_STATION_P1_POS));
+            if (decryptedBuffer[0] & RSSI_SIGN_STATION_P1_MASK) {
               MirrorLink.rssiRemote *= -1;
             }
             MirrorLink.rssiRemote *= 2;
 
             // Decode SNR from 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
-            MirrorLink.snrRemote = (int16_t)((decryptedBuffer[1] & 0x7F000000) >> 24);
+            MirrorLink.snrRemote = (int16_t)((decryptedBuffer[0] & SNR_STATION_MASK) >> SNR_STATION_POS);
 
-            if (decryptedBuffer[1] & 0x80000000) {
+            if (decryptedBuffer[0] & SNR_SIGN_STATION_MASK) {
               MirrorLink.snrRemote *= -1;
             }
             MirrorLink.snrRemote *= 2;
 
             // Diagnostics
             // If response command different than last command sent then report error
-            if ((MirrorLink.response >> 27) != (MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27)) {
+            if (MirrorLink.responseCommand != ((MirrorLink.payloadBuffer[ML_CMD_1][MirrorLink.indexBufferTail] >> CMD_REMOTE_POS) & 0x3F)) {
               MLDEBUG_PRINTLN(F("Station response does not match command sent!"));
-              MLDEBUG_PRINTLN(MirrorLink.response);
-              MLDEBUG_PRINTLN(MirrorLink.buffer[MirrorLink.indexBufferTail] >> 27);
+              MLDEBUG_PRINTLN(MirrorLink.responseCommand);
+              MLDEBUG_PRINTLN((MirrorLink.payloadBuffer[ML_CMD_1][MirrorLink.indexBufferTail] >> 8) & 0x3F);
             }
 
             // print data of the packet
             MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
+            MLDEBUG_PRINT(MirrorLink.responseCommand);
             MLDEBUG_PRINTLN(MirrorLink.response);
 
             // Process payload
             // Response payload format
-            // bit 16 to 22 = Number of active SID's (for diagnostic check) --> TODO!
-            // bit 23 to 26 = Error bits
-            // bit 27 to 31 = cmd
+            // bit 0 to 23 = Number of active SID's (for diagnostic check) & Diagnostic bits--> TODO!
 
             // In case response shows a sync error between remote and station
             // delete all programs and reset response
-            if (((MirrorLink.response >> 23) & 0xF) == ML_SYNCERROR) {
+            if ((MirrorLink.responseCommand) == ML_SYNCERROR) {
               delete_program_data(-1);
               MLDEBUG_PRINTLN(F("Sync error with remote, reset program data!"));
             }
@@ -1498,6 +1511,7 @@ void MirrorLinkState(void) {
               MirrorLink.indexBufferTail = (MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH;
             }
             
+            MirrorLink.responseCommand = 0;
             MirrorLink.response = 0;
             MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
@@ -1585,10 +1599,11 @@ void MirrorLinkState(void) {
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
           if (packetOk == true) {
             // Process header
-            MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
-            MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
-            MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
-            MirrorLink.command = (uint32_t)decryptedBuffer[1];
+            MirrorLink.status.comStationState = ((decryptedBuffer[ML_CMD_1] & STATE_MASK) >> STATE_POS);
+            MirrorLink.status.powerCmd = ((decryptedBuffer[ML_CMD_1] & POWERCMD_MASK) >> POWERCMD_POS);
+            MirrorLink.status.channelNumber = ((decryptedBuffer[ML_CMD_1] & CHNUMBER_MASK) >> CHNUMBER_POS);
+            MirrorLink.command[ML_CMD_1] = ((uint32_t)decryptedBuffer[ML_CMD_1] & (CMD_REMOTE_MASK | PAYLOAD1_REMOTE_MASK));
+            MirrorLink.command[ML_CMD_2] = (uint32_t)decryptedBuffer[ML_CMD_2];
             MLDEBUG_PRINT(F("Channel received:\t\t"));
             MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
             MLDEBUG_PRINT(F("PowerCMD received:\t\t"));
@@ -1596,11 +1611,12 @@ void MirrorLinkState(void) {
 
             // print data of the packet
             MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
-            MLDEBUG_PRINTLN(MirrorLink.command);
+            MLDEBUG_PRINTLN(MirrorLink.command[ML_CMD_1]);
+            MLDEBUG_PRINTLN(MirrorLink.command[ML_CMD_2]);
             
             // Process payload
             if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_NORMAL) {
-              uint32_t payload = 0;
+              uint32_t payload[ML_CMD_MAX];
               byte sid = 0;
               int16_t pid = 0;
               uint8_t en = 0;
@@ -1613,21 +1629,20 @@ void MirrorLinkState(void) {
               char * latitude;
               char * longitude;
               const float weight = 180./(1 << 23);
-              if (MirrorLink.command != 0) {
+              if (MirrorLink.command[ML_CMD_1] != 0) {
                 // Execute command
-                switch (MirrorLink.command >> 27) {
+                switch (MirrorLink.command[ML_CMD_1] >> CMD_REMOTE_POS) {
                   // Initial state
                   case ML_TESTSTATION:
                     // Message format: 
                     // bit 0 = status (1 = On, 0 = Off)
                     // bit 1 to 8 = sid
                     // bit 9 to 24 = time(sec)
-                    // bit 25 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_TESTSTATION);
-                    sid = (byte) (0xFF & (payload >> 1));
-                    en = (uint8_t) (payload & 0x1);
-                    timer = (uint16_t) ((0xFFFF) & (payload >> 9));     
+                    // bit 25 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_TESTSTATION, payload);
+                    sid = (byte) (0xFF & (payload[ML_CMD_2] >> 1));
+                    en = (uint8_t) (payload[ML_CMD_2] & 0x1);
+                    timer = (uint16_t) ((0xFFFF) & (payload[ML_CMD_2] >> 9));     
                     schedule_test_station(sid, timer);
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
@@ -1635,11 +1650,10 @@ void MirrorLinkState(void) {
                     // Message format: 
                     // bit 0 to 6 = program number (max. is 40)
                     // bit 7 = Add (1) or delete (0)
-                    // bit 8 to 16 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMADDDEL);
-                    addProg = ((payload >> 7) & 0x1);
-                    pid = (int16_t) (0x7F & payload);
+                    // bit 8 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMADDDEL, payload);
+                    addProg = ((payload[ML_CMD_2] >> 7) & 0x1);
+                    pid = (int16_t) (0x7F & payload[ML_CMD_2]);
                     sprintf_P(mirrorlinkProg.name, "%d", pid);
 
                     // If the request is to add (or modify) a program
@@ -1650,7 +1664,7 @@ void MirrorLinkState(void) {
                       if (pid != pd.nprograms) {
                         // Delete all programs
                         delete_program_data(-1);
-                        MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
+                        MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << CMD_STATION_POS);
                       }
                       // Otherwise create new program or modify existing one
                       else {
@@ -1681,7 +1695,7 @@ void MirrorLinkState(void) {
                       if (pid >= pd.nprograms) {
                         // Delete all programs
                         delete_program_data(-1);
-                        MirrorLink.command |= (((uint32_t)ML_SYNCERROR) << 23);
+                        MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << CMD_STATION_POS);
                       }
                       // Otherwise delete the program
                       else {
@@ -1698,13 +1712,12 @@ void MirrorLinkState(void) {
                     // bit 9 to 10 = Odd/even restriction
                     // bit 11 to 12 = schedule type
                     // bit 13 to 20 = Number of programs in remote
-                    // bit 21 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP);
-                    pid = (int16_t) (0x7F & payload);
-                    mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload >> 7));
-                    mirrorlinkProg.use_weather = (uint8_t) (0x1 & (payload >> 8));
-                    mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload >> 9));
+                    // bit 21 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP, payload);
+                    pid = (int16_t) (0x7F & payload[ML_CMD_2]);
+                    mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload[ML_CMD_2] >> 7));
+                    mirrorlinkProg.use_weather = (uint8_t) (0x1 & (payload[ML_CMD_2] >> 8));
+                    mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload[ML_CMD_2] >> 9));
                     sprintf_P(mirrorlinkProg.name, "%d", pid);
                     change_program_data(pid, pd.nprograms, &mirrorlinkProg);
                     // Reset MirrorLinkProg
@@ -1726,12 +1739,11 @@ void MirrorLinkState(void) {
                     // Message format:
                     // bit 0 to 6 = program number (max. is 40)
                     // bit 7 to 22 = days
-                    // bit 23 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDAYS);
-                    pid = (int16_t) (0x7F & payload);
-                    mirrorlinkProg.days[0] = (byte) (0xFF & (payload >> 15));
-                    mirrorlinkProg.days[1] = (byte) (0xFF & (payload >> 7));
+                    // bit 23 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMDAYS, payload);
+                    pid = (int16_t) (0x7F & payload[ML_CMD_2]);
+                    mirrorlinkProg.days[0] = (byte) (0xFF & (payload[ML_CMD_2] >> 15));
+                    mirrorlinkProg.days[1] = (byte) (0xFF & (payload[ML_CMD_2] >> 7));
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;            
                   case ML_PROGRAMSTARTTIME:
@@ -1740,13 +1752,12 @@ void MirrorLinkState(void) {
                     // bit 7 to 8 = start time number (max. is 4 for each program)
                     // bit 9 to 24 = start time
                     // bit 25 = Starttime type
-                    // bit 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMSTARTTIME);
-                    pid = (int16_t)(payload & 0x7F);
-                    stTimeNum = (uint8_t)((payload >> 7) & 0x3);
-                    mirrorlinkProg.starttimes[stTimeNum] = (int16_t)((payload >> 9) & 0xFFFF);
-                    mirrorlinkProg.starttime_type = (uint8_t)((payload >> 25) & 0x1);
+                    // bit 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMSTARTTIME, payload);
+                    pid = (int16_t)(payload[ML_CMD_2] & 0x7F);
+                    stTimeNum = (uint8_t)((payload[ML_CMD_2] >> 7) & 0x3);
+                    mirrorlinkProg.starttimes[stTimeNum] = (int16_t)((payload[ML_CMD_2] >> 9) & 0xFFFF);
+                    mirrorlinkProg.starttime_type = (uint8_t)((payload[ML_CMD_2] >> 25) & 0x1);
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_PROGRAMDURATION:
@@ -1754,46 +1765,43 @@ void MirrorLinkState(void) {
                     // bit 0 to 6 = program number (max. is 40)
                     // bit 7 to 14 = sid
                     // bit 15 to 25 = time (min)
-                    // bit 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_PROGRAMDURATION);
-                    pid = (int16_t)(payload & 0x7F);
-                    sid = (byte)((payload >> 7) & 0xFF);
-                    mirrorlinkProg.durations[sid] = (uint16_t)(60 * ((payload >> 15) & 0x7FF));
+                    // bit 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMDURATION, payload);
+                    pid = (int16_t)(payload[ML_CMD_2] & 0x7F);
+                    sid = (byte)((payload[ML_CMD_2] >> 7) & 0xFF);
+                    mirrorlinkProg.durations[sid] = (uint16_t)(60 * ((payload[ML_CMD_2] >> 15) & 0x7FF));
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_TIMESYNC:
                     // Message format:
                     // bit 0 to 26 = Unix Timestamp in minutes! not seconds
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_TIMESYNC);
-                    setTime((time_t)(60*(0x7FFFFFF & payload)));
-                    RTC.set((time_t)(60*(0x7FFFFFF & payload)));
+                    // bit 27 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_TIMESYNC, payload);
+                    setTime((time_t)(60*(0x7FFFFFF & payload[ML_CMD_2])));
+                    RTC.set((time_t)(60*(0x7FFFFFF & payload[ML_CMD_2])));
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_TIMEZONESYNC:
                     // Payload format:
                     // bit 0 to 7 = Time zone
-                    // bit 8 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_TIMEZONESYNC);
-                    os.iopts[IOPT_TIMEZONE] = (byte)(0xFF & payload);
+                    // bit 8 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_TIMEZONESYNC, payload);
+                    os.iopts[IOPT_TIMEZONE] = (byte)(0xFF & payload[ML_CMD_2]);
                     os.iopts[IOPT_USE_NTP] = 0;
                     os.iopts_save();
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_CURRENTREQUEST:
                     // TODO:
-                    payload = MirrorLinkGetCmd((uint8_t)ML_CURRENTREQUEST);
+                    MirrorLinkGetCmd((uint8_t)ML_CURRENTREQUEST, payload);
                   case ML_EMERGENCYSHUTDOWN:
                     // TODO:
-                    payload = MirrorLinkGetCmd((uint8_t)ML_EMERGENCYSHUTDOWN);
+                    MirrorLinkGetCmd((uint8_t)ML_EMERGENCYSHUTDOWN, payload);
                     break;
                   case ML_STATIONREBOOT:
                     // Payload format:
-                    // bit 0 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_STATIONREBOOT);
+                    // bit 0 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_STATIONREBOOT, payload);
                     MirrorLink.status.rebootRequest = (uint16_t)true;
                     os.reboot_dev(REBOOT_CAUSE_MIRRORLINK);
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
@@ -1801,11 +1809,10 @@ void MirrorLinkState(void) {
                   case ML_LATITUDE:
                     // Payload format: 
                     // bit 0 to 24 = latitude (bit 24 for sign)
-                    // bit 24 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_LATITUDE);
-                    MirrorLink.latitude = (int32_t)(0xFFFFFF & payload);
-                    if (payload & 0x1000000) MirrorLink.latitude *= -1;
+                    // bit 24 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_LATITUDE, payload);
+                    MirrorLink.latitude = (int32_t)(0xFFFFFF & payload[ML_CMD_2]);
+                    if (payload[ML_CMD_2] & 0x1000000) MirrorLink.latitude *= -1;
                     sprintf_P(tmp_buffer, PSTR("%f,%f"), (float) (weight * ((float)MirrorLink.latitude- 0.5f)), (float) (weight * ((float)MirrorLink.longitude- 0.5f)));
                     os.sopt_save(SOPT_LOCATION, tmp_buffer);
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
@@ -1813,46 +1820,43 @@ void MirrorLinkState(void) {
                   case ML_LONGITUDE:
                     // Payload format: 
                     // bit 0 to 23 = longitude
-                    // bit 24 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_LONGITUDE);
-                    MirrorLink.longitude = (int32_t)(0xFFFFFF & payload);
-                    if (payload & 0x1000000) MirrorLink.longitude *= -1;
+                    // bit 24 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_LONGITUDE, payload);
+                    MirrorLink.longitude = (int32_t)(0xFFFFFF & payload[ML_CMD_2]);
+                    if (payload[ML_CMD_2] & 0x1000000) MirrorLink.longitude *= -1;
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_SUNRISE:
                     // Payload format: 
                     // bit 0 to 15 = sunrise time
-                    // bit 16 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_SUNRISE);
-                    os.nvdata.sunrise_time = payload;
+                    // bit 16 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_SUNRISE, payload);
+                    os.nvdata.sunrise_time = payload[ML_CMD_2];
                     os.nvdata_save();
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_SUNSET:
                     // Payload format: 
                     // bit 0 to 15 = sunset time
-                    // bit 16 to 26 = Not used
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_SUNSET);
-                    os.nvdata.sunset_time = payload;
+                    // bit 16 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_SUNSET, payload);
+                    os.nvdata.sunset_time = payload[ML_CMD_2];
                     os.nvdata_save();
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_RAINDELAYSTOPTIME:
                     // TODO:
-                    payload = MirrorLinkGetCmd((uint8_t)ML_RAINDELAYSTOPTIME);
+                    MirrorLinkGetCmd((uint8_t)ML_RAINDELAYSTOPTIME, payload);
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                   case ML_STAYALIVE:
                     // Payload format: 
                     // bit 0 to 25 = Stayalive configured counter
                     // bit 26 = Bit indicating if stayalive feature shall be used (true) or ignored (false)
-                    // bit 27 to 31 = cmd
-                    payload = MirrorLinkGetCmd((uint8_t)ML_STAYALIVE);
-                    MirrorLink.status.stayAlive = (uint8_t)((payload >> 26) & 0x01);
-                    MirrorLink.stayAliveMaxPeriod = ((uint32_t)(payload & 0x3FFFFFF) * 1000);
+                    // bit 27 to 31 = Not used
+                    MirrorLinkGetCmd((uint8_t)ML_STAYALIVE, payload);
+                    MirrorLink.status.stayAlive = (uint8_t)((payload[ML_CMD_2] >> 26) & 0x01);
+                    MirrorLink.stayAliveMaxPeriod = ((uint32_t)(payload[ML_CMD_2] & 0x3FFFFFF) * 1000);
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     break;
                 }
@@ -1881,7 +1885,7 @@ void MirrorLinkState(void) {
               MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
               MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
               // Update first part of the nonce
-              MirrorLink.nonce[0] = decryptedBuffer[1];
+              MirrorLink.nonce[0] = decryptedBuffer[ML_CMD_2];
               // Reset Stayalive Timer
               MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
               MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_DEAD_TIME * 1000);
@@ -1973,7 +1977,7 @@ void MirrorLinkWork(void) {
             }
             MirrorLink.status.comStationState = ML_LINK_COM_NONCEUPDATE;
           }
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << NETWORKID_POS) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << STATE_POS) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << POWERCMD_POS) | ((((uint32_t)nextChannel) & 0xF) << CHNUMBER_POS) | (random(INT32_MAX) & 0x3FFF));
 
           // Process payload
           // Generate first part of future random nonce for the link
@@ -2041,11 +2045,11 @@ void MirrorLinkWork(void) {
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
           if (packetOk == true) {
             // Check if association or renewval command from station
-            MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> 22);
+            MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> STATE_POS);
             if (   (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION)
                 || (MirrorLink.status.comStationState == ML_LINK_COM_NONCEUPDATE) ) {
-              MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> 18);
-              MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> 14);
+              MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> POWERCMD_POS);
+              MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> CHNUMBER_POS);
               // Update first part of the nonce
               MirrorLink.nonce[0] = decryptedBuffer[1];
               // Start transmission timer
@@ -2062,7 +2066,7 @@ void MirrorLinkWork(void) {
           }
         }
         // Else if transmission timer is due
-        else if (  (MirrorLink.sendTimer <= millis())
+        else if (  ((MirrorLink.sendTimer / 1000) == (millis() / 1000))
                 && (MirrorLink.status.flagRxTx == ML_RECEIVING)) {
           byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
           uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
@@ -2071,7 +2075,7 @@ void MirrorLinkWork(void) {
 
           // Process header
           // If association request sent
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << NETWORKID_POS) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << STATE_POS) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << POWERCMD_POS) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << CHNUMBER_POS));
 
           // Process payload
           // Generate second part of future nonce for the link
@@ -2153,11 +2157,12 @@ void MirrorLinkWork(void) {
               snr = (((uint8_t)((MirrorLink.snrLocal / 2) * -1)) | 0x80);
             }
           }
-          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << 14));
+          plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << NETWORKID_POS) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << STATE_POS) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << POWERCMD_POS) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << CHNUMBER_POS) | ((uint32_t)(snr & 0xFF) << SNR_STATION_POS) | ((uint32_t)(rssi & 0xFF) >> RSSI_STATION_P1_POS));
 
           // Process payload
-          plainBuffer[1] = (((uint32_t)(snr & 0xFF) << 24) | (((uint32_t)(rssi & 0xFF)) << 16) | ((uint32_t)(MirrorLink.command >> 16)));
-          MirrorLink.command = 0;
+          plainBuffer[1] = (((uint32_t)(rssi & 0xFF) << RSSI_STATION_P2_POS) | ((uint32_t)(MirrorLink.command[ML_CMD_2] & 0x3FFFFFFF)));
+          MirrorLink.command[ML_CMD_1] = 0;
+          MirrorLink.command[ML_CMD_2] = 0;
 
           // Increment nounceCtr
           MirrorLinkIncrementNonceCtr(MirrorLink.nonceCtr);

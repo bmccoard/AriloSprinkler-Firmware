@@ -313,9 +313,9 @@ void do_setup() {
 	os.begin();			 // OpenSprinkler init
 	os.options_setup();  // Setup options
 	// Initialize MirrorLink LORA module if present
-#if defined(ESP32)
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	MirrorLinkInit();
-#endif
+#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	pd.init();			 // ProgramData init
 
 	setSyncInterval(RTC_SYNC_INTERVAL);  // RTC sync interval

@@ -42,6 +42,29 @@
 #define MIRRORLINK_MIN_POWER_BUDGET        -90     // MirrorLink minimum link budget in dBm for proper reception
 #define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
 
+// Payload positions and masks
+#define CMD_STATION_POS                     24
+#define CMD_REMOTE_POS                      8
+#define NETWORKID_POS                       24
+#define STATE_POS                           22
+#define POWERCMD_POS                        18
+#define CHNUMBER_POS                        14
+#define SNR_STATION_POS                     6
+#define RSSI_STATION_P1_POS                 2
+#define RSSI_STATION_P2_POS                 30
+#define SNR_STATION_MASK                    0x3FC0
+#define SNR_SIGN_STATION_MASK               0x2000
+#define RSSI_SIGN_STATION_P1_MASK           0x20
+#define RSSI_STATION_P1_MASK                0x1F
+#define RSSI_STATION_P2_MASK                0xC0000000
+#define PAYLOAD1_REMOTE_MASK                0xFF
+#define PAYLOAD2_STATION_MASK               0xFFFFFF
+#define HEADER_MASK                         0xFFFFC000
+#define CMD_REMOTE_MASK                     0x3F00
+#define STATE_MASK                          0xC00000
+#define POWERCMD_MASK                       0x3C0000
+#define CHNUMBER_MASK                       0x3C000
+
 // Speck64/128 encryption based on NSA implementation guide plus CTR cipher mode
 #define MIRRORLINK_SPECK_ROUNDS             27
 #define MIRRORLINK_SPECK_KEY_LEN            4  // 4x uint32_t
@@ -56,6 +79,7 @@
 #define MIRRORLINK_SPECK_DEFAULT_KEY_N4     0x1b1a1918 // 454695192
 
 #define ENABLE_DEBUG_MIRRORLINK
+//#define ML_LOCALTEST
 
 #if defined(ENABLE_DEBUG_MIRRORLINK) /** Serial debug functions */
 
@@ -101,7 +125,14 @@ enum MirrorlinkCommands {
   ML_SUNSET,                  // Command to configure the sunset time in the remote station
   ML_RAINDELAYSTOPTIME,       // Command to configure the rain delay stop time
   ML_STAYALIVE,               // Command sent regularily, needed for the remote station to not shutdown all outputs
-  ML_MAX_CMD                  // total number of commands
+  ML_MAX_CMD                  // Total number of commands
+};
+
+// Enum for command parts on station side
+enum MirrorlinkStationCommandParts {
+  ML_CMD_1 = 0,      // First part of the command (14 bits)
+  ML_CMD_2,          // Second part of the command (32 bits)
+  ML_CMD_MAX         // Max payload commands
 };
 
 // Enum for channel numbers
