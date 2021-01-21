@@ -1894,13 +1894,9 @@ void MirrorLinkState(void) {
             // Update Link status
             MirrorLink.status.link = ML_LINK_UP;
           }
-          // TODO: CHANGE!!!:
-          // New logic -> If message wrong decoded check if it is an association one and associate and stay in receive.
-          // Check if this is possible or will create issues with the nounce!
-          // If it is not an association one ignore (do not go to association)
 
           // If message decryption unsuccessful
-          // then go to association
+          // then check if association message
           else {
             // Check if association message
             // Decrypt plain message
