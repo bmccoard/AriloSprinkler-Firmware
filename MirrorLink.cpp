@@ -1902,13 +1902,32 @@ void MirrorLinkState(void) {
           // If message decryption unsuccessful
           // then go to association
           else {
+            // Check if association message
+            // Decrypt plain message
+            MirrorLinkSpeckDecrypt(encryptedBuffer, decryptedBuffer, MirrorLinkSpeckKeyExp);
+            packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
+            if (packetOk == true) {
+              // Check if association or renewval command from station
+              MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> STATE_POS);
+              if (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION) {
+                MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> POWERCMD_POS);
+                MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> CHNUMBER_POS);
+                // Update first part of the nonce
+                MirrorLink.nonce[0] = decryptedBuffer[1];
+                // Start transmission timer
+                MirrorLink.sendTimer = (millis() + ((uint32_t)MIRRORLINK_RXTX_DEAD_TIME * 1000));
+                // Reset Stayalive Timer
+                MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
+              }
+              else {
+                MLDEBUG_PRINTLN(F("Error, association message w/o proper command!"));
+              }
+            }
+            else {
+              MLDEBUG_PRINTLN(F("Issue in packet decryption!"));
+            }
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-            MirrorLink.sendTimer = 0;
-            MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-            MirrorLinkReceiveInit();
-            // Update Link status
-            MirrorLink.status.link = ML_LINK_DOWN;
           }
         }
         // If reception timeout then go to association
@@ -1963,7 +1982,7 @@ void MirrorLinkWork(void) {
               nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             }
             else {
-              nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);//nextChannel = ((MirrorLink.status.channelNumber + 1) % ML_CH_MAX);
+              nextChannel = ((MirrorLink.status.channelNumber + 1) % ML_CH_MAX);
             }
             MirrorLink.status.comStationState = ML_LINK_COM_ASSOCIATION;
           }
@@ -2013,7 +2032,7 @@ void MirrorLinkWork(void) {
           MirrorLinkReceiveInit();
           if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) {
             MirrorLink.txTime = (lora.getTimeOnAir(8) / 1000);
-            MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_STAYALIVE_PERIOD * 1000);
+            MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
           }
           else {
             // Calculate transmission-free time based on duty cycle and time of last message

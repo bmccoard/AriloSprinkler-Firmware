@@ -24,6 +24,9 @@
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
+#define ENABLE_DEBUG_MIRRORLINK
+#define ML_LOCALTEST
+
 // Config defines
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
 #define MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH 8      // Length in bytes from the Lora messages
@@ -31,7 +34,11 @@
 #define MIRRORLINK_REGCOMMANDS_MID_PERIOD   86400  // Period in seconds to send the regular commands to remote station (mid)
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
+#if defined(ML_LOCALTEST)
+#define MIRRORLINK_STAYALIVE_PERIOD         600    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#else
 #define MIRRORLINK_STAYALIVE_PERIOD         3600   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#endif
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #define MIRRORLINK_KEYCHANGE_MAX_TIME       3600   // Maximum period in seconds to renew the keys
@@ -77,9 +84,6 @@
 #define MIRRORLINK_SPECK_DEFAULT_KEY_N2     0x0b0a0908 // 185207048
 #define MIRRORLINK_SPECK_DEFAULT_KEY_N3     0x13121110 // 319951120
 #define MIRRORLINK_SPECK_DEFAULT_KEY_N4     0x1b1a1918 // 454695192
-
-#define ENABLE_DEBUG_MIRRORLINK
-//#define ML_LOCALTEST
 
 #if defined(ENABLE_DEBUG_MIRRORLINK) /** Serial debug functions */
 
