@@ -25,7 +25,7 @@
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 #define ENABLE_DEBUG_MIRRORLINK
-#define ML_LOCALTEST
+//#define ML_LOCALTEST
 
 // Config defines
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
@@ -147,16 +147,6 @@ enum MirrorlinkChannels {
   ML_CH_3,         // Channel 3
   ML_CH_4,         // Channel 4
   ML_CH_5,         // Channel 5
-  ML_CH_6,         // Channel 6
-  ML_CH_7,         // Channel 7
-  ML_CH_8,         // Channel 8
-  ML_CH_9,         // Channel 9
-  ML_CH_10,        // Channel 10
-  ML_CH_11,        // Channel 11
-  ML_CH_12,        // Channel 12
-  ML_CH_13,        // Channel 13
-  ML_CH_14,        // Channel 14
-  ML_CH_15,        // Channel 15
   ML_CH_MAX        // Max. channel number
 };
 
@@ -207,6 +197,9 @@ bool MirrorLinkSetFrequencyHoppingStatus(uint8_t freqhopstatus);
 bool MirrorLinkSetMaxPower(int8_t maxpower);
 bool MirrorLinkSetATPCStatus(uint8_t atpcstatus);
 bool MirrorLinkSetDutyCycle(float dutycycle);
+bool MirrorLinkGetAssociationStatus();
+uint8_t MirrorLinkGetChannel();
+int8_t MirrorLinkGetPower();
 void MirrorLinkInit();
 void MirrorLinkMain();
 String MirrorLinkStatusGeneral();

@@ -115,6 +115,7 @@ static char ui_anim_chars[3] = {'.', 'o', 'O'};
 #define UI_STATE_DISP_IP	 1
 #define UI_STATE_DISP_GW	 2
 #define UI_STATE_RUNPROG	 3
+#define UI_STATE_DISP_ML	 4
 
 static byte ui_state = UI_STATE_DEFAULT;
 static byte ui_state_runprog = 0;
@@ -172,6 +173,22 @@ void ui_state_machine() {
 				} else if (digitalReadExt(PIN_BUTTON_2)==0) { // if B2 is pressed while holding B1, display gateway IP
 					os.lcd.clear(0, 1);
 					os.lcd.setCursor(0, 0);
+#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+					os.lcd_print_pgm(PSTR("ML Status: "));
+					if (MirrorLinkGetAssociationStatus()) {
+						os.lcd_print_pgm(PSTR("UP"));
+					}
+					else {
+						os.lcd_print_pgm(PSTR("DOWN"));
+					}
+					os.lcd.setCursor(0, 1);
+					os.lcd_print_pgm(PSTR("ML Channel: "));
+					os.lcd.print(MirrorLinkGetChannel());
+					os.lcd.setCursor(0, 2);
+					os.lcd_print_pgm(PSTR("ML Power: "));
+					os.lcd.print(MirrorLinkGetPower());
+					ui_state = UI_STATE_DISP_ML; 
+#else
 					#if defined(ESP8266) || defined(ESP32)
 					if (!m_server) { os.lcd.print(WiFi.gatewayIP()); }
 					else
@@ -180,6 +197,7 @@ void ui_state_machine() {
 					os.lcd.setCursor(0, 1);
 					os.lcd_print_pgm(PSTR("(gwip)"));
 					ui_state = UI_STATE_DISP_IP;
+#endif
 				} else {	// if no other button is clicked, stop all zones
 					if(!ui_confirm(PSTR("Stop all zones?"))) {ui_state = UI_STATE_DEFAULT; break;}
 					reset_all_stations();
@@ -267,6 +285,7 @@ void ui_state_machine() {
 		break;
 	case UI_STATE_DISP_IP:
 	case UI_STATE_DISP_GW:
+	case UI_STATE_DISP_ML:
 		ui_state = UI_STATE_DEFAULT;
 		break;
 	case UI_STATE_RUNPROG:

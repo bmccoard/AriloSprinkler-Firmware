@@ -168,7 +168,7 @@ table#mlsp td { border: 3px solid black; border-collapse: collapse;}</style>
 <tr><td><input type='number' name='mlpass2' id='mlpass2' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 2 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlpass3' id='mlpass3' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 3 (32bit max)</td></tr>
 <tr><td><input type='number' name='mlpass4' id='mlpass4' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px'></td><td>Association Key 4 (32bit max)</td></tr>
-<tr><td><input type='number' name='mlchan' id='mlchan' min='0' max='15' style='font-size:14pt;height:28px;'></td><td>Channel (0 to 15)</td></tr>
+<tr><td><input type='number' name='mlchan' id='mlchan' min='0' max='5' style='font-size:14pt;height:28px;'></td><td>Channel (0 to 5)</td></tr>
 <tr><td><input type='checkbox' name='mlfhop' id='mlfhop' value='1' style='font-size:14pt;height:28px;'></td><td>Frequency Hopping</td></tr>
 <tr><td><input type='number' name='mlplim' id='mlplim' min='-20' max='30' style='font-size:14pt;height:28px;'></td><td>Power Limit (-20 to +30dBm)</td></tr>
 <tr><td><input type='checkbox' name='mlatpc' id='mlatpc' value='1' style='font-size:14pt;height:28px;'></td><td>ATPC (Adaptive Transmission Power Control)</td></tr>

@@ -41,27 +41,15 @@
 // Frequency hopping array (Default values acc. to German Bundesagenturnetz Vfg 12/2020)
 float MirrorLinkFreqs[ML_CH_MAX] = {
 #if defined(ML_LOCALTEST)
-  866.2,      // ML_CH_0 -> 866.2MHz to 866.325MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.235,    // ML_CH_1 -> 866.235MHz to 866.360MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.275,    // ML_CH_2 -> 866.275MHz to 866.4MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  866.235,    // ML_CH_0 -> 866.235MHz to 866.360MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
 #else
-  865.6,      // ML_CH_0 -> 865.6MHz to 865.725MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  865.635,    // ML_CH_1 -> 865.635MHz to 865.760MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  865.675,    // ML_CH_2 -> 865.675MHz to 865.8MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  865.635,    // ML_CH_0 -> 865.635MHz to 865.760MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
 #endif
-  866.2,      // ML_CH_3 -> 866.2MHz to 866.325MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.235,    // ML_CH_4 -> 866.235MHz to 866.360MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.275,    // ML_CH_5 -> 866.275MHz to 866.4MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.8,      // ML_CH_6 -> 866.8MHz to 866.925MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.835,    // ML_CH_7 -> 866.835MHz to 866.960MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  866.875,    // ML_CH_8 -> 866.875MHz to 867.0MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  867.4,      // ML_CH_9 -> 867.4MHz to 867.525MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  867.435,    // ML_CH_10 -> 867.435MHz to 867.560MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  867.475,    // ML_CH_11 -> 867.475MHz to 867.6MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  869.4,      // ML_CH_12 -> 869.4MHz to 869.525MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  869.435,    // ML_CH_13 -> 869.435MHz to 869.560MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  869.470,    // ML_CH_14 -> 869.470MHz to 869.595MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
-  869.525,    // ML_CH_15 -> 869.525MHz to 869.65MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  866.235,    // ML_CH_1 -> 866.235MHz to 866.360MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  866.835,    // ML_CH_2 -> 866.835MHz to 866.960MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  867.435,    // ML_CH_3 -> 867.435MHz to 867.560MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  869.4,      // ML_CH_4 -> 869.4MHz to 869.525MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
+  869.525,    // ML_CH_5 -> 869.525MHz to 869.65MHz, 500mW (27dBm) with ATPC, 10% Duty Cycle
 };
 
 // Intern program to store program data sent by remote
@@ -368,6 +356,22 @@ bool MirrorLinkSetDutyCycle(float dutycycle) {
   return accepted;
 }
 
+bool MirrorLinkGetAssociationStatus(void) {
+  bool associated = false;
+  if (MirrorLink.status.comStationState != ML_LINK_COM_ASSOCIATION) {
+    associated = true;
+  }
+  return associated;
+}
+
+uint8_t MirrorLinkGetChannel(void) {
+  return MirrorLink.status.channelNumber;
+}
+
+int8_t MirrorLinkGetPower(void) {
+  return MirrorLink.powerLevel;
+}
+
 void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
   switch (cmd) {
     // Initial state
@@ -470,8 +474,9 @@ void MirrorLinkGetCmd(uint8_t cmd, uint32_t *payload)
     payload[ML_CMD_2] = MirrorLink.command[ML_CMD_2];
   }
   // Empty command but cmd part to send answer to remote station
-  MirrorLink.command[ML_CMD_1] &= HEADER_MASK;
   MirrorLink.command[ML_CMD_2] = 0;
+  MirrorLink.command[ML_CMD_2] |= (((uint32_t)(MirrorLink.command[ML_CMD_1] >> CMD_REMOTE_POS)) << CMD_STATION_POS);
+  MirrorLink.command[ML_CMD_1] &= HEADER_MASK;
 }
 
 void MirrorLinkPeriodicCommands(void) {
@@ -692,7 +697,7 @@ String MirrorLinkStatusPackets() {
   mirrorLinkInfo += "\"notxtime\":[";
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
-    if (MirrorLink.status.mirrorlinkState == MIRRORLINK_BUFFERING) {
+    if (MirrorLink.status.flagRxTx == ML_RECEIVING) {
       if (MirrorLink.sendTimer >= millis()) {
         mirrorLinkInfo += String((MirrorLink.sendTimer - millis()) / 1000);
       }
@@ -1324,6 +1329,7 @@ void MirrorLinkState(void) {
         if (MirrorLinkTransmitStatus() == true) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+          MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_NORMAL;
           MirrorLinkReceiveInit();
           // Update Link status
           MirrorLink.status.link = ML_LINK_UP;
@@ -1463,7 +1469,7 @@ void MirrorLinkState(void) {
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
           if (packetOk == true) {
             // Process header
-            MirrorLink.responseCommand = (uint32_t)(decryptedBuffer[0] >> CMD_STATION_POS) & 0x3F;
+            MirrorLink.responseCommand = (uint32_t)(decryptedBuffer[1] >> CMD_STATION_POS) & 0x3F;
             MirrorLink.response = (uint32_t)(decryptedBuffer[1] & PAYLOAD2_STATION_MASK);
             // Gather SNR and RSSI from station
             // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
@@ -1488,11 +1494,6 @@ void MirrorLinkState(void) {
               MLDEBUG_PRINTLN(MirrorLink.responseCommand);
               MLDEBUG_PRINTLN((MirrorLink.payloadBuffer[ML_CMD_1][MirrorLink.indexBufferTail] >> 8) & 0x3F);
             }
-
-            // print data of the packet
-            MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
-            MLDEBUG_PRINT(MirrorLink.responseCommand);
-            MLDEBUG_PRINTLN(MirrorLink.response);
 
             // Process payload
             // Response payload format
@@ -1608,30 +1609,27 @@ void MirrorLinkState(void) {
             MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
             MLDEBUG_PRINT(F("PowerCMD received:\t\t"));
             MLDEBUG_PRINTLN(MirrorLink.status.powerCmd);
-
-            // print data of the packet
-            MLDEBUG_PRINT(F("[SX1262] Data:\t\t"));
-            MLDEBUG_PRINTLN(MirrorLink.command[ML_CMD_1]);
-            MLDEBUG_PRINTLN(MirrorLink.command[ML_CMD_2]);
             
             // Process payload
             if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_NORMAL) {
               uint32_t payload[ML_CMD_MAX];
-              byte sid = 0;
-              int16_t pid = 0;
-              uint8_t en = 0;
               uint16_t timer = 0;
-              uint8_t stTimeNum = 0;
+              int16_t pid = 0;
               uint16_t duration = 0;
+              byte sid = 0;
+              uint8_t en = 0;
+              uint8_t stTimeNum = 0;
               uint8_t usw = 0;
               uint8_t oddeven = 0;
               uint8_t addProg = 0;
+              uint8_t command = 0;
               char * latitude;
               char * longitude;
               const float weight = 180./(1 << 23);
               if (MirrorLink.command[ML_CMD_1] != 0) {
+                command = (MirrorLink.command[ML_CMD_1] >> CMD_REMOTE_POS);
                 // Execute command
-                switch (MirrorLink.command[ML_CMD_1] >> CMD_REMOTE_POS) {
+                switch (command) {
                   // Initial state
                   case ML_TESTSTATION:
                     // Message format: 
