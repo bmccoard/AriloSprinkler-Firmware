@@ -487,8 +487,8 @@ void ml_sta_ap_status_boards() {
 void ml_sta_ap_boardselect() {
 	uint8_t mlBoardSel;
 	uint8_t oks = 0;
-	if (wifi_server->hasArg("boardsel")&&wifi_server->arg("boardsel").length()!=0) {
-		mlBoardSel = strtoul(wifi_server->arg("boardsel").c_str(), NULL, 0);
+	if (wifi_server->hasArg("boardnum")&&wifi_server->arg("boardnum").length()!=0) {
+		mlBoardSel = strtoul(wifi_server->arg("boardnum").c_str(), NULL, 0);
 		if (MirrorLinkSetBoardSelect(mlBoardSel)) oks++;
 		if (oks == 1) {
 			server_send_result(HTML_SUCCESS);

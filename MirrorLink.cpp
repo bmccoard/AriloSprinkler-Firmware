@@ -553,10 +553,13 @@ void MirrorLinkPeriodicCommands(void) {
   }
   // Send regular commands (fast)
   if (((millis() / 1000) % (time_t)MIRRORLINK_REGCOMMANDS_FAST_PERIOD) == 0) {
-    // Send ML_TIMESYNC
-    // bit 0 to 26 = Unix Timestamp in minutes! not seconds
-    // bit 27 to 31 = cmd
-    MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
+    // Send ML_TIMESYNC just in case no messages in the buffer (to avoid inducing time delay between REMOTE and STATION)
+    if (MirrorLink.bufferedCommands == 0) {
+      // Send ML_TIMESYNC
+      // bit 0 to 26 = Unix Timestamp in minutes! not seconds
+      // bit 27 to 31 = cmd
+      MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
+    }
   }
 }
 

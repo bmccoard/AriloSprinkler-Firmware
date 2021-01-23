@@ -30,7 +30,7 @@
 // Config defines
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
 #define MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH 8      // Length in bytes from the Lora messages
-#define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  1800   // Period in seconds to send the regular commands to remote station (fast)
+#define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  300    // Period in seconds to send the regular commands to remote station (fast)
 #define MIRRORLINK_REGCOMMANDS_MID_PERIOD   86400  // Period in seconds to send the regular commands to remote station (mid)
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
