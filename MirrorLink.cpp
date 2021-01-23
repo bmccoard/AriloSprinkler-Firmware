@@ -124,6 +124,7 @@ struct MIRRORLINK {
   int8_t powerMax;                                               // Maximum allowed transmission power
   uint8_t boardSelected;                                         // Selected board to show status in the MirrorLink web page
   uint8_t boardStatusBits[MAX_NUM_BOARDS];                       // Status bits of the boards on the station acc. to last sync
+  uint8_t diagErrors;                                            // Diagnostic errors
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
@@ -895,6 +896,7 @@ void MirrorLinkInit(void) {
   }
   MirrorLink.powerLevel = MirrorLink.powerMax;
   MirrorLink.boardSelected = 0;
+  MirrorLink.diagErrors = ML_NO_ERROR;
   for (uint8_t i; i < MAX_NUM_BOARDS; i++) MirrorLink.boardStatusBits[i] = 0;
 
 	MLDEBUG_BEGIN(115200);
@@ -1473,7 +1475,8 @@ void MirrorLinkState(void) {
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
           if (packetOk == true) {
             // Process header
-            MirrorLink.responseCommand = (uint32_t)(decryptedBuffer[1] >> APPERROR_STATION_POS) & 0xFF;
+            MirrorLink.responseCommand = (uint32_t)(decryptedBuffer[1] >> CMD_STATION_POS) & 0x3F;
+            MirrorLink.diagErrors = (uint32_t)(decryptedBuffer[1] >> APPERROR_STATION_POS) & 0xFF;
             MirrorLink.response = (uint32_t)(decryptedBuffer[1] & PAYLOAD2_STATION_MASK);
             // Gather SNR and RSSI from station
             // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
@@ -1501,11 +1504,10 @@ void MirrorLinkState(void) {
 
             // Process payload
             // Response payload format
-            // bit 0 to 23 = Number of active SID's (for diagnostic check) & Diagnostic bits--> TODO!
 
             // In case response shows a sync error between remote and station
             // delete all programs and reset response
-            if ((MirrorLink.responseCommand) == ML_SYNCERROR) {
+            if ((MirrorLink.diagErrors) == ML_SYNCERROR) {
               delete_program_data(-1);
               MLDEBUG_PRINTLN(F("Sync error with remote, reset program data!"));
             }
