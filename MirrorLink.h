@@ -204,6 +204,7 @@ bool MirrorLinkSetFrequencyHoppingStatus(uint8_t freqhopstatus);
 bool MirrorLinkSetMaxPower(int8_t maxpower);
 bool MirrorLinkSetATPCStatus(uint8_t atpcstatus);
 bool MirrorLinkSetDutyCycle(float dutycycle);
+bool MirrorLinkSetBoardSelect(uint8_t boardNumber);
 bool MirrorLinkGetAssociationStatus();
 uint8_t MirrorLinkGetChannel();
 int8_t MirrorLinkGetPower();
@@ -212,6 +213,7 @@ void MirrorLinkMain();
 String MirrorLinkStatusGeneral();
 String MirrorLinkStatusRadio();
 String MirrorLinkStatusPackets();
+String MirrorLinkStatusBoards();
 
 #endif // defined(ESP32) && defined(MIRRORLINK_ENABLE)
 

@@ -479,6 +479,29 @@ void ml_sta_ap_status_packets() {
 	server_send_html(html);
 }
 
+void ml_sta_ap_status_boards() {
+	String html = MirrorLinkStatusBoards();
+	server_send_html(html);
+}
+
+void ml_sta_ap_boardselect() {
+	uint8_t mlBoardSel;
+	uint8_t oks = 0;
+	if (wifi_server->hasArg("boardsel")&&wifi_server->arg("boardsel").length()!=0) {
+		mlBoardSel = strtoul(wifi_server->arg("boardsel").c_str(), NULL, 0);
+		if (MirrorLinkSetBoardSelect(mlBoardSel)) oks++;
+		if (oks == 1) {
+			server_send_result(HTML_SUCCESS);
+		}
+		else {
+			server_send_result(HTML_DATA_MISSING, "Incorrect input data");
+		}
+	}
+	else {
+		server_send_result(HTML_DATA_MISSING, "Incorrect input data");
+	}
+}
+
 void ml_sta_ap_chconfig() {
 	uint32_t mlPass1, mlPass2, mlPass3, mlPass4;
 	float mlDutyCycle;
@@ -2266,7 +2289,9 @@ void start_server_client() {
 	wifi_server->on("/mlstatusgeneral", ml_sta_ap_status_general);
 	wifi_server->on("/mlstatusradio", ml_sta_ap_status_radio);
 	wifi_server->on("/mlstatuspackets", ml_sta_ap_status_packets);
+	wifi_server->on("/mlstatusboards", ml_sta_ap_status_boards);
 	wifi_server->on("/mlchconfig", ml_sta_ap_chconfig);
+	wifi_server->on("/mlboardsel", ml_sta_ap_boardselect);
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 	// set up all other handlers
@@ -2301,7 +2326,9 @@ void start_server_ap() {
 	wifi_server->on("/mlstatusgeneral", ml_sta_ap_status_general);
 	wifi_server->on("/mlstatusradio", ml_sta_ap_status_radio);
 	wifi_server->on("/mlstatuspackets", ml_sta_ap_status_packets);
+	wifi_server->on("/mlstatusboards", ml_sta_ap_status_boards);
 	wifi_server->on("/mlchconfig", ml_sta_ap_chconfig);
+	wifi_server->on("/mlboardsel", ml_sta_ap_boardselect);
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 	// set up all other handlers

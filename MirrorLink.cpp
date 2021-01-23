@@ -359,6 +359,20 @@ bool MirrorLinkSetDutyCycle(float dutycycle) {
   return accepted;
 }
 
+bool MirrorLinkSetBoardSelect(uint8_t boardNumber) {
+  bool accepted = false;
+  if ((boardNumber > 0) && (boardNumber <= os.nboards)) {
+    MirrorLink.boardSelected = (boardNumber - 1);
+    MLDEBUG_PRINT(F("Board Selected: "));
+    MLDEBUG_PRINTLN(MirrorLink.boardSelected);
+    accepted = true;
+  }
+  else {
+    accepted = false;
+  }
+  return accepted;
+}
+
 bool MirrorLinkGetAssociationStatus(void) {
   bool associated = false;
   if (MirrorLink.status.comStationState != ML_LINK_COM_ASSOCIATION) {
@@ -714,6 +728,98 @@ String MirrorLinkStatusPackets() {
   }
   else {
       mirrorLinkInfo += "N.A.";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "]}";
+	return mirrorLinkInfo;
+}
+
+// Board Status MirrorLink for wifi server
+String MirrorLinkStatusBoards() {
+	String mirrorLinkInfo;
+	// Encode in JSON message
+  mirrorLinkInfo = "{\"boardnumber\":["; 
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += String((MirrorLink.boardSelected + 1));
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput1\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x1)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput2\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x2)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput3\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x4)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput4\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x8)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput5\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x10)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput6\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x20)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput7\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x40)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
+  }
+  mirrorLinkInfo += "\"";
+  mirrorLinkInfo += "],";
+  mirrorLinkInfo += "\"boardoutput8\":[";
+  mirrorLinkInfo += "\"";
+  if ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & 0x80)) {
+    mirrorLinkInfo += "ON";
+  }
+  else {
+    mirrorLinkInfo += "OFF";
   }
   mirrorLinkInfo += "\"";
   mirrorLinkInfo += "]}";

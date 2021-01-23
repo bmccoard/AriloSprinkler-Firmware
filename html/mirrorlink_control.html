@@ -31,6 +31,21 @@ table#mlsp td { border: 3px solid black; border-collapse: collapse;}</style>
   <tr><td>(Waiting...)</td></tr>
 </table>
 <br><br>
+<style> table, th, td { border: 0px solid black; border-collapse: collapse; padding: 5px;}
+table#mlsb th { border: 3px solid black;}
+table#mlsb td { border: 3px solid black; border-collapse: collapse;}</style>
+<caption><b style='color:black'>Station Output Status</caption><br><br>
+<table cellspacing=4 id='mlsb'>
+  <tr><td>Board&nbsp&nbsp</td><td>Ouput 1&nbsp&nbsp</td><td>Output 2&nbsp&nbsp</td><td>Output 3&nbsp&nbsp</td><td>Output 4&nbsp&nbsp</td><td>Output 5&nbsp&nbsp</td><td>Output 6&nbsp&nbsp</td><td>Output 7&nbsp&nbsp</td><td>Output 8&nbsp&nbsp</td></tr>
+  <tr><td>(Waiting...)</td></tr>
+</table>
+<br><br>
+<table cellspacing=16>
+  <tr><td><input type='number' name='boardnum' id='boardnum' min='1' max='9' style='font-size:12pt;height:28px;width:120px;'></td><td>Board Number (1 to 9)</td></tr>
+  <tr><td colspan=2><p id='msg1'></p></td></tr>
+  <tr><td><button type='button' id='butt1' onclick='mls();' style='height:36px;width:130px'>Show Board</button></td><td></td></tr>
+</table>
+<br><br>
 <table cellspacing=16>
   <tr><td><input type='number' name='netid' id='netid' min='0' max='255' style='font-size:12pt;height:28px;width:120px;'></td><td>Network ID (0 to 255)</td></tr>
   <tr><td><input type='number' name='mlpass1' id='mlpass1' min='0' max='4294967295' style='font-size:12pt;height:28px;width:120px;'></td><td>Association Key 1 (32bit max)</td></tr>
@@ -43,19 +58,32 @@ table#mlsp td { border: 3px solid black; border-collapse: collapse;}</style>
   <tr><td><input type='checkbox' name='mlatpc' id='mlatpc' value='1' style='font-size:14pt;height:28px;'></td><td>ATPC (Adaptive Transmission Power Control)</td></tr>
   <tr><td><input type='number' name='dtcycl' id='dtcycl' min='0.0' max='100.0' step='0.1' style='font-size:14pt;height:28px;'></td><td>Duty Cycle (0.0 to 100.0)</td></tr>
   <tr><td><input type='checkbox' name='mlrem' id='mlrem' value='1' style='font-size:14pt;height:28px;'></td><td>Remote Mode</td></tr>
-  <tr><td colspan=2><p id='msg'></p></td></tr>
-  <tr><td><button type='button' id='butt' onclick='mlc();' style='height:36px;width:130px'>Submit</button></td><td></td></tr>
+  <tr><td colspan=2><p id='msg2'></p></td></tr>
+  <tr><td><button type='button' id='butt2' onclick='mlc();' style='height:36px;width:130px'>Save Configuration</button></td><td></td></tr>
 </table>
 <script>
 function id(s) {return document.getElementById(s);}
-function mlc() {
-  id('msg').innerHTML='';
+function mls() {
+  id('msg1').innerHTML='';
   var xhr=new XMLHttpRequest();
   xhr.onreadystatechange=function() {
     if(xhr.readyState==4 && xhr.status==200) {
       var jd=JSON.parse(xhr.responseText);
       if(jd.result==1) { return; }
-      id('msg').innerHTML='<b><font color=red>Error code: '+jd.result+', item: '+jd.item+'</font></b>'; id('butt').innerHTML='Submit'; id('butt').disabled=false;id('mlpass1').disabled=false;id('mlpass2').disabled=false;id('mlpass3').disabled=false;id('mlpass4').disabled=false;id('mlchan').disabled=false;id('mlplim').disabled=false;id('dtcycl').disabled=false;id('mlrem').disabled=false;
+      id('msg1').innerHTML='<b><font color=red>Error code: '+jd.result+', item: '+jd.item+'</font></b>'; id('butt1').innerHTML='Submit'; id('butt1').disabled=false;id('boardnum').disabled=false;
+    }
+  };
+  var comm='mlboardsel?boardnum='+encodeURIComponent(id('boardnum').value);
+  xhr.open('GET', comm, true); xhr.send();
+}
+function mlc() {
+  id('msg2').innerHTML='';
+  var xhr=new XMLHttpRequest();
+  xhr.onreadystatechange=function() {
+    if(xhr.readyState==4 && xhr.status==200) {
+      var jd=JSON.parse(xhr.responseText);
+      if(jd.result==1) { return; }
+      id('msg2').innerHTML='<b><font color=red>Error code: '+jd.result+', item: '+jd.item+'</font></b>'; id('butt2').innerHTML='Submit'; id('butt2').disabled=false;id('netid').disabled=false;id('mlpass1').disabled=false;id('mlpass2').disabled=false;id('mlpass3').disabled=false;id('mlpass4').disabled=false;id('mlchan').disabled=false;id('mlplim').disabled=false;id('dtcycl').disabled=false;id('mlrem').disabled=false;
     }
   };
   var checkrem=0;
@@ -87,7 +115,7 @@ function showStatusRadio() {
       id('mlsr').deleteRow(1);
       var jd=JSON.parse(xhr.responseText);
       var row=id('mlsr').insertRow(-1);
-      row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>" + "<td align='center'>("+jd.dutycycle+"%)</td>" + "<td align='center'>("+jd.powerlevel+" dbm)</td>" + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1] +" dbm)</td>" + "<td align='center'>("+jd.snrs[0] +" db)</td>" + "<td align='center'>("+jd.snrs[1] +" db)</td>" + "<td align='center'>("+jd.assocst +")</td>" + "<td align='center'>("+jd.assocatm +")</td>" + "</tr>";
+      row.innerHTML ="<tr><td align='center'>("+jd.frequency+" MHz)</td>" + "<td align='center'>("+jd.dutycycle+"%)</td>" + "<td align='center'>("+jd.powerlevel+" dbm)</td>" + "<td align='center'>("+jd.rssis[0]+" dbm)</td>" + "<td align='center'>("+jd.rssis[1]+" dbm)</td>" + "<td align='center'>("+jd.snrs[0]+" db)</td>" + "<td align='center'>("+jd.snrs[1]+" db)</td>" + "<td align='center'>("+jd.assocst+")</td>" + "<td align='center'>("+jd.assocatm+")</td>" + "</tr>";
     };
   }
   xhr.open('GET','mlstatusradio',true); xhr.send();
@@ -100,11 +128,24 @@ function showStatusPackets() {
       id('mlsp').deleteRow(1);
       jd=JSON.parse(xhr.responseText);
       row=id('mlsp').insertRow(-1);
-      row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>"  + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx +")</td>" + "<td align='center'>("+jd.encryption +")</td>" + "<td align='center'>("+jd.packettime +" msec)</td>" + "<td align='center'>("+jd.notxtime +" sec)</td>" + "</tr>";
+      row.innerHTML ="<tr><td align='center'>("+jd.buffpackets+")</td>" + "<td align='center'>("+jd.packetstx+")</td>" + "<td align='center'>("+jd.packetsrx+")</td>" + "<td align='center'>("+jd.encryption+")</td>" + "<td align='center'>("+jd.packettime+" msec)</td>" + "<td align='center'>("+jd.notxtime+" sec)</td>" + "</tr>";
     };
   }
   xhr.open('GET','mlstatuspackets',true); xhr.send();
 }
 setInterval(showStatusPackets, 7000);
+function showStatusBoards() {
+  var xhr=new XMLHttpRequest();
+  xhr.onreadystatechange=function() {
+    if(xhr.readyState==4 && xhr.status==200) {
+      id('mlsb').deleteRow(1);
+      jd=JSON.parse(xhr.responseText);
+      row=id('mlsb').insertRow(-1);
+      row.innerHTML ="<tr><td align='center'>("+jd.boardnumber+")</td>" + "<td align='center'>("+jd.boardoutput1+")</td>" + "<td align='center'>("+jd.boardoutput2+")</td>" + "<td align='center'>("+jd.boardoutput3+")</td>" + "<td align='center'>("+jd.boardoutput4+")</td>" + "<td align='center'>("+jd.boardoutput5+")</td>" + "<td align='center'>("+jd.boardoutput6+")</td>" + "<td align='center'>("+jd.boardoutput7+")</td>" + "<td align='center'>("+jd.boardoutput8+")</td>" + "</tr>";
+    };
+  }
+  xhr.open('GET','mlstatusboards',true); xhr.send();
+}
+setInterval(showStatusBoards, 5000);
 </script>
 </body>
