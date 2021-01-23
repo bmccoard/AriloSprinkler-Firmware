@@ -59,6 +59,9 @@
 #define SNR_STATION_POS                     6
 #define RSSI_STATION_P1_POS                 2
 #define RSSI_STATION_P2_POS                 30
+#define BOARDSEL_REMOTE_POS                 4
+#define BOARDSTATUS_STATION_POS             16
+#define APPERROR_STATION_POS                8
 #define SNR_STATION_MASK                    0x3FC0
 #define SNR_SIGN_STATION_MASK               0x2000
 #define RSSI_SIGN_STATION_P1_MASK           0x20
@@ -71,6 +74,9 @@
 #define STATE_MASK                          0xC00000
 #define POWERCMD_MASK                       0x3C0000
 #define CHNUMBER_MASK                       0x3C000
+#define BOARDSEL_MASK                       0xF
+#define BOARDSTATUS_MASK                    0xFF
+
 
 // Speck64/128 encryption based on NSA implementation guide plus CTR cipher mode
 #define MIRRORLINK_SPECK_ROUNDS             27
@@ -91,7 +97,8 @@
     #define MLDEBUG_BEGIN(x)   {Serial.begin(x);}
     #define MLDEBUG_PRINT(x)   {Serial.print(x);}
     #define MLDEBUG_PRINTLN(x) {Serial.println(x);}
-    #define MLDEBUG_PRINTX(x)  {Serial.print(F("0x")); Serial.print(x, HEX); }
+    #define MLDEBUG_PRINTX(x)  {Serial.print(F("0x")); Serial.print(x, HEX);}
+    #define MLDEBUG_PRINBIN(x) {Serial.print(x, BIN);}
   #endif
 
 #else
@@ -162,7 +169,7 @@ enum MirrorlinkStatus {
   ML_LINK_UP       // Link is up
 };
 
-// Enum for errors
+// Enum for errors (max. 255 error types)
 enum MirrorlinkErrors {
   ML_NO_ERROR = 0,  // No error
   ML_SYNCERROR      // Sync. error between remote and station
