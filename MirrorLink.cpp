@@ -1221,14 +1221,15 @@ bool MirrorLinkReceive(byte *rxArray) {
     else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
       MLDEBUG_PRINTLN(F("CRC error!"));
-      MirrorLinkReceiveInit();
     }
     else if (MirrorLink.moduleState != ERR_NONE) {
       // some other error occurred
       MLDEBUG_PRINT(F("failed, code "));
       MLDEBUG_PRINTLN(MirrorLink.moduleState);
-      MirrorLinkReceiveInit();
     }
+
+    // Restart packet reception
+    lora.startReceive();
 
     // we're ready to receive more packets,
     // enable interrupt service routine
