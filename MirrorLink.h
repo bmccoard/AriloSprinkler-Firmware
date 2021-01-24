@@ -62,7 +62,7 @@
 #define BOARDSEL_REMOTE_POS                 4
 #define BOARDSTATUS_STATION_POS             16
 #define APPERROR_STATION_POS                8
-#define SNR_STATION_MASK                    0x3FC0
+#define SNR_STATION_MASK                    0x1FC0
 #define SNR_SIGN_STATION_MASK               0x2000
 #define RSSI_SIGN_STATION_P1_MASK           0x20
 #define RSSI_STATION_P1_MASK                0x1F
