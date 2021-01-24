@@ -37,7 +37,7 @@
 #if defined(ML_LOCALTEST)
 #define MIRRORLINK_STAYALIVE_PERIOD         600    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #else
-#define MIRRORLINK_STAYALIVE_PERIOD         3600   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_STAYALIVE_PERIOD         900   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #endif
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)

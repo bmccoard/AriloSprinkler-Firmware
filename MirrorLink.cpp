@@ -1164,6 +1164,23 @@ bool MirrorLinkTransmit(byte *txArray) {
   return txStartSuccessful;
 }
 
+void MirrorLinkReceiveInit(void) {
+  // Important! To enable receive you need to switch the SX126x antenna switch to RECEIVE 
+  enableRX();
+  // Set reception frequency
+  MirrorLink.moduleState = lora.setFrequency(MirrorLinkFreqs[MirrorLink.status.channelNumber]);
+  // start listening for LoRa packets
+  MLDEBUG_PRINT(F("[SX1262] Starting to listen ... "));
+  MirrorLink.moduleState = lora.startReceive();
+  if (MirrorLink.moduleState == ERR_NONE) {
+    MLDEBUG_PRINTLN(F("success!"));
+    MirrorLink.status.flagRxTx = ML_RECEIVING;
+  } else {
+    MLDEBUG_PRINT(F("failed, code "));
+    MLDEBUG_PRINTLN(MirrorLink.moduleState);
+  }
+}
+
 bool MirrorLinkReceive(byte *rxArray) {
   bool rxSuccessful = false;
   if(MirrorLink.status.receivedFlag) {
@@ -1204,11 +1221,13 @@ bool MirrorLinkReceive(byte *rxArray) {
     else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
       MLDEBUG_PRINTLN(F("CRC error!"));
+      MirrorLinkReceiveInit();
     }
     else if (MirrorLink.moduleState != ERR_NONE) {
       // some other error occurred
       MLDEBUG_PRINT(F("failed, code "));
       MLDEBUG_PRINTLN(MirrorLink.moduleState);
+      MirrorLinkReceiveInit();
     }
 
     // we're ready to receive more packets,
@@ -1299,23 +1318,6 @@ bool MirrorLinkCheckDecryptedMessage(uint32_t *decryptedBuffer) {
   }
 
   return decryptedSuccessful;
-}
-
-void MirrorLinkReceiveInit(void) {
-  // Important! To enable receive you need to switch the SX126x antenna switch to RECEIVE 
-  enableRX();
-  // Set reception frequency
-  MirrorLink.moduleState = lora.setFrequency(MirrorLinkFreqs[MirrorLink.status.channelNumber]);
-  // start listening for LoRa packets
-  MLDEBUG_PRINT(F("[SX1262] Starting to listen ... "));
-  MirrorLink.moduleState = lora.startReceive();
-  if (MirrorLink.moduleState == ERR_NONE) {
-    MLDEBUG_PRINTLN(F("success!"));
-    MirrorLink.status.flagRxTx = ML_RECEIVING;
-  } else {
-    MLDEBUG_PRINT(F("failed, code "));
-    MLDEBUG_PRINTLN(MirrorLink.moduleState);
-  }
 }
 
 // MirrorLink function to control the actions related to the stayalive counter
