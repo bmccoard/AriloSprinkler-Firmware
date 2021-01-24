@@ -1453,6 +1453,7 @@ void MirrorLinkState(void) {
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_NORMAL;
           MirrorLinkReceiveInit();
+          MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
           // Update Link status
           MirrorLink.status.link = ML_LINK_UP;
         }
@@ -1740,7 +1741,14 @@ void MirrorLinkState(void) {
             MLDEBUG_PRINT(F("Channel received:\t\t"));
             MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
             MLDEBUG_PRINT(F("PowerCMD received:\t\t"));
-            MLDEBUG_PRINTLN(MirrorLink.status.powerCmd);
+            #if defined(ENABLE_DEBUG_MIRRORLINK) /** Serial debug functions */
+            // Calculate power level based on local max and powerCmd received from remote
+            uint8_t powerCmd = MirrorLink.status.powerCmd;
+            int16_t powerLevel = (10 * ((powerCmd & 0x4) >> 2)) + (5 * ((powerCmd & 0x2) >> 1)) + (powerCmd & 0x1);
+            if (powerCmd & 0x8) powerLevel *= -1;
+            powerLevel += MirrorLink.powerLevel;
+            #endif
+            MLDEBUG_PRINTLN(powerLevel);
             
             // Process payload
             if (MirrorLink.status.comStationState == (uint32_t)ML_LINK_COM_NORMAL) {
@@ -2036,6 +2044,7 @@ void MirrorLinkState(void) {
               MirrorLink.nonce[0] = decryptedBuffer[ML_CMD_2];
               // Reset Stayalive Timer
               MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
+              MirrorLink.status.assOrNonceUpdateTriedFlag = 0;
               MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_DEAD_TIME * 1000);
               MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             }

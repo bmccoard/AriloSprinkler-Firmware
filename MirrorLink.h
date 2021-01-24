@@ -41,9 +41,15 @@
 #endif
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
+#if defined(ML_LOCALTEST)
+#define MIRRORLINK_KEYCHANGE_MAX_TIME       120    // Maximum period in seconds to renew the keys
+#define MIRRORLINK_KEYCHANGE_MIN_TIME       60     // Minimum period in seconds to renew the keys
+#define MIRRORLINK_MAX_POWER                -17    // MirrorLink maximum transmission power in dBm
+#else
 #define MIRRORLINK_KEYCHANGE_MAX_TIME       3600   // Maximum period in seconds to renew the keys
 #define MIRRORLINK_KEYCHANGE_MIN_TIME       900    // Minimum period in seconds to renew the keys
 #define MIRRORLINK_MAX_POWER                16     // MirrorLink maximum transmission power in dBm
+#endif
 #define MIRRORLINK_MIN_POWER               -17     // MirrorLink minimum transmission power in dBm
 #define MIRRORLINK_AMPLIF_FACTOR            14     // MirrorLink amplification factor in dB (amplifier plus antenna, for plain E22-900T30S with 0dB antenna is 14dBm -> for 16dBm tx, amplification up to 30dBm)
 #define MIRRORLINK_MIN_POWER_BUDGET        -90     // MirrorLink minimum link budget in dBm for proper reception
