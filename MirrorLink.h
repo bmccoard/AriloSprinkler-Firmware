@@ -35,15 +35,15 @@
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
 #if defined(ML_LOCALTEST)
-#define MIRRORLINK_STAYALIVE_PERIOD         600    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_STAYALIVE_PERIOD         900//600    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #else
-#define MIRRORLINK_STAYALIVE_PERIOD         900   // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_STAYALIVE_PERIOD         900    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #endif
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
 #define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #if defined(ML_LOCALTEST)
-#define MIRRORLINK_KEYCHANGE_MAX_TIME       120    // Maximum period in seconds to renew the keys
-#define MIRRORLINK_KEYCHANGE_MIN_TIME       60     // Minimum period in seconds to renew the keys
+#define MIRRORLINK_KEYCHANGE_MAX_TIME       3600//120    // Maximum period in seconds to renew the keys
+#define MIRRORLINK_KEYCHANGE_MIN_TIME       900//60     // Minimum period in seconds to renew the keys
 #define MIRRORLINK_MAX_POWER                -17    // MirrorLink maximum transmission power in dBm
 #else
 #define MIRRORLINK_KEYCHANGE_MAX_TIME       3600   // Maximum period in seconds to renew the keys

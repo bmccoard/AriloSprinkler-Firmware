@@ -829,6 +829,51 @@ String MirrorLinkStatusBoards() {
 	return mirrorLinkInfo;
 }
 
+// Return next channel to be selected
+uint8_t MirrorLinkSelectChannel(void) {
+  uint8_t selChannel = 0;
+  bool channelFree = false;
+  // start scanning current channel
+  int8_t state = CHANNEL_FREE;//lora.scanChannel();
+  MLDEBUG_PRINTLN(F("Selecting channel"));
+  // Send next channel to station
+  if (MirrorLink.status.freqHopState == 1) {
+    for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+      selChannel = random(0, ML_CH_MAX);
+      MLDEBUG_PRINT(F("Channel: "));
+      MLDEBUG_PRINTLN(selChannel);
+      if(state == PREAMBLE_DETECTED) {
+        // LoRa preamble was detected
+        MLDEBUG_PRINTLN(F(" -> Detected preamble, channel in use!"));
+        channelFree = false;
+      } 
+      else if(state == CHANNEL_FREE) {
+        // no preamble was detected, channel is free
+        MLDEBUG_PRINTLN(F(" -> channel is free!"));
+        channelFree = true;
+        break;
+      }
+    }
+  }
+  else {
+    channelFree = true;
+    selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+    MLDEBUG_PRINT(F("Channel: "));
+    MLDEBUG_PRINTLN(selChannel);
+    if(state == PREAMBLE_DETECTED) {
+      // LoRa preamble was detected
+      MLDEBUG_PRINTLN(F(" -> Detected preamble, channel in use!"));
+      channelFree = false;
+    } 
+    else if(state == CHANNEL_FREE) {
+      // no preamble was detected, channel is free
+      MLDEBUG_PRINTLN(F(" -> channel is free!"));
+      channelFree = true;
+    }
+  }
+  return selChannel;
+}
+
 // Calculate power level
 int8_t MirrorLinkPowerLevel(void) {
   int16_t powerLevel;
@@ -1161,6 +1206,19 @@ bool MirrorLinkTransmit(byte *txArray) {
     MirrorLink.txTime = millis();
   }
   MirrorLink.status.flagRxTx = ML_TRANSMITTING;
+
+  MLDEBUG_PRINT(F("Channel to be sent:\t\t"));
+  MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
+  MLDEBUG_PRINT(F("PowerCMD to be sent:\t\t"));
+  #if defined(ENABLE_DEBUG_MIRRORLINK) /** Serial debug functions */
+  // Calculate power level based on local max and powerCmd received from remote
+  uint8_t powerCmd = MirrorLink.status.powerCmd;
+  int16_t powerLevel = (10 * ((powerCmd & 0x4) >> 2)) + (5 * ((powerCmd & 0x2) >> 1)) + (powerCmd & 0x1);
+  if (powerCmd & 0x8) powerLevel *= -1;
+  powerLevel += MirrorLink.powerLevel;
+  #endif
+  MLDEBUG_PRINTLN(powerLevel);
+
   return txStartSuccessful;
 }
 
@@ -1408,7 +1466,6 @@ void MirrorLinkState(void) {
             MirrorLinkSpeckCtrDecrypt(encryptedBuffer, decryptedBuffer, MirrorLink.nonceCtr, MirrorLinkSpeckKeyExp);
           }
           packetOk = MirrorLinkCheckDecryptedMessage(decryptedBuffer);
-
           if (packetOk == true) {
             // Update second part of the key and update decryption key
             MirrorLink.nonce[1] = decryptedBuffer[1];
@@ -1420,6 +1477,8 @@ void MirrorLinkState(void) {
             MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
             // Calculate transmission-free time based on duty cycle and time of last message
             MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
+            MLDEBUG_PRINT(F("SendTimer: "));
+            MLDEBUG_PRINTLN(MirrorLink.sendTimer);
             // Update Link status
             MirrorLink.status.comStationState = ML_LINK_COM_NORMAL;
             MirrorLink.status.link = ML_LINK_UP;
@@ -1433,6 +1492,8 @@ void MirrorLinkState(void) {
         else if (  (MirrorLink.sendTimer <= millis())
                  && (MirrorLink.status.mirrorlinkState == MIRRORLINK_NONCEUPDATE)
                  && (MirrorLink.status.assOrNonceUpdateTriedFlag == 1) ) {
+          // Report error
+          MLDEBUG_PRINTLN(F("No answer received from station!"));
           // Make sure we send an association command to station
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
@@ -1440,6 +1501,8 @@ void MirrorLinkState(void) {
           MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
           // Update Link status
           MirrorLink.status.link = ML_LINK_DOWN;
         }
@@ -1474,6 +1537,8 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_NONCEUPDATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_NONCEUPDATE;
           MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_DEAD_TIME * 1000);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
           // Process header
           // Trigger a change of keys
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_NONCEUPDATE;
@@ -1481,12 +1546,13 @@ void MirrorLinkState(void) {
           MirrorLink.nonceUpdateTimer = millis() + (uint32_t)random(((uint32_t)MIRRORLINK_KEYCHANGE_MIN_TIME * 1000), ((uint32_t)MIRRORLINK_KEYCHANGE_MAX_TIME) * 1000);
           MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
           // Send next channel to station
-          if (MirrorLink.status.freqHopState == 1) {
-            nextChannel = random(0, ML_CH_MAX);
-          }
-          else {
-            nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-          }
+          nextChannel = MirrorLinkSelectChannel();
+          // if (MirrorLink.status.freqHopState == 1) {
+          //   nextChannel = random(0, ML_CH_MAX);
+          // }
+          // else {
+          //   nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+          // }
           plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << NETWORKID_POS) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << STATE_POS) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << POWERCMD_POS) | ((((uint32_t)nextChannel) & 0xF) << CHNUMBER_POS) | ((((uint32_t)MirrorLink.boardSelected) & BOARDSEL_MASK) << BOARDSEL_REMOTE_POS));
           
           // Process payload
@@ -1512,16 +1578,19 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_SEND"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
           MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
 
           // Process header
           MirrorLink.status.powerCmd = MirrorLinkPowerCmdEncode();
           // Send next channel to station
-          if (MirrorLink.status.freqHopState == 1) {
-            nextChannel = random(0, ML_CH_MAX);
-          }
-          else {
-            nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-          }
+          nextChannel = MirrorLinkSelectChannel();
+          // if (MirrorLink.status.freqHopState == 1) {
+          //   nextChannel = random(0, ML_CH_MAX);
+          // }
+          // else {
+          //   nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+          // }
           plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << 24) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << 22) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << 18) | ((((uint32_t)nextChannel) & 0xF) << 14) | ((((uint32_t)MirrorLink.payloadBuffer[ML_CMD_1][MirrorLink.indexBufferTail]) & 0x3FFF)) | ((((uint32_t)MirrorLink.boardSelected) & BOARDSEL_MASK) << BOARDSEL_REMOTE_POS));
 
           // Process payload -> Nothing to do
@@ -1551,21 +1620,27 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINT(F("Transmission duration: "));
           MLDEBUG_PRINTLN(MirrorLink.txTime);
           MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLinkReceiveInit();
         }
         else if (MirrorLink.sendTimer <= millis()) {
-          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
-          MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
+          MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
+          MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         }
       }
       else {
         if (   (MirrorLinkTransmitStatus() == true)
             || (MirrorLink.sendTimer <= millis())) {
           MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLinkReceiveInit();
@@ -1646,7 +1721,7 @@ void MirrorLinkState(void) {
             
             MirrorLink.responseCommand = 0;
             MirrorLink.response = 0;
-            MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+            //MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
             // Calculate transmission-free time based on duty cycle and time of last message
@@ -1683,6 +1758,8 @@ void MirrorLinkState(void) {
             // Request change state to association for station
             MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
           }
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
         }
 
         // If timeout
@@ -1705,6 +1782,8 @@ void MirrorLinkState(void) {
           MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
 
           // Update Link status
           MirrorLink.status.link = ML_LINK_DOWN;
@@ -2018,6 +2097,8 @@ void MirrorLinkState(void) {
                 }
               }
               MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+              MLDEBUG_PRINT(F("SendTimer: "));
+              MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
               MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_SEND"));
               MirrorLink.status.mirrorlinkState = MIRRORLINK_SEND;
               // Delay to allow the remote to turn to rx mode
@@ -2050,6 +2131,8 @@ void MirrorLinkState(void) {
             }
             // Update Link status
             MirrorLink.status.link = ML_LINK_UP;
+            MLDEBUG_PRINT(F("SendTimer: "));
+            MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
           }
           // If message decryption unsuccessful
           // then check if association message
@@ -2068,6 +2151,8 @@ void MirrorLinkState(void) {
                 MirrorLink.nonce[0] = decryptedBuffer[1];
                 // Start transmission timer
                 MirrorLink.sendTimer = (millis() + ((uint32_t)MIRRORLINK_RXTX_DEAD_TIME * 1000));
+                MLDEBUG_PRINT(F("SendTimer: "));
+                MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
                 // Reset Stayalive Timer
                 MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
               }
@@ -2141,16 +2226,19 @@ void MirrorLinkWork(void) {
           }
           // Set NonceUpdate channel and command nonce update from station
           else {
-            if (MirrorLink.status.freqHopState == 1) {
-              nextChannel = random(0, ML_CH_MAX);
-            }
-            else {
-              nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
-            }
+            nextChannel = MirrorLinkSelectChannel();
+            // if (MirrorLink.status.freqHopState == 1) {
+            //   nextChannel = random(0, ML_CH_MAX);
+            // }
+            // else {
+            //   nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            // }
             MirrorLink.status.comStationState = ML_LINK_COM_NONCEUPDATE;
           }
           // Set send timer control
           MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
 
           plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << NETWORKID_POS) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << STATE_POS) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << POWERCMD_POS) | ((((uint32_t)nextChannel) & 0xF) << CHNUMBER_POS) | (random(INT32_MAX) & 0x3FFF));
 
@@ -2198,6 +2286,8 @@ void MirrorLinkWork(void) {
             // Calculate transmission-free time based on duty cycle and time of last message
             MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
           }
+          MLDEBUG_PRINT(F("SendTimer: "));
+          MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
         }
       }
       // Station
@@ -2233,6 +2323,8 @@ void MirrorLinkWork(void) {
               MirrorLink.nonce[0] = decryptedBuffer[1];
               // Start transmission timer
               MirrorLink.sendTimer = (millis() + ((uint32_t)MIRRORLINK_RXTX_DEAD_TIME * 1000));
+              MLDEBUG_PRINT(F("SendTimer: "));
+              MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
               // Reset Stayalive Timer
               MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
             }
