@@ -109,8 +109,10 @@ struct MIRRORLINK {
   int32_t latitude;                                              // Latitude of the remote station
   int32_t longitude;                                             // Longitude of the remote station
   uint32_t payloadBuffer[ML_CMD_MAX][MIRRORLINK_BUFFERLENGTH];   // Buffer for queued payloads (46 bit each) to be sent to station
+  uint32_t bannedChannelTimer[ML_CH_MAX];                        // Timer controlling banned channels during a specific period of time
   int16_t moduleState;                                           // LORA module state
   uint16_t associationAttempts;                                  // Counter to control the number of association attempts
+  uint16_t packetsLost[ML_CH_MAX];                               // Counter with the number of lost packets per channel within a defined timeframe
   int16_t snrLocal;                                              // Local SNR (local reception)
   int16_t rssiLocal;                                             // Local RSSI (local reception)
   uint16_t dutyCycle;                                            // Maximum duty cycle in tenths of % (1 = 0.1)
@@ -125,6 +127,7 @@ struct MIRRORLINK {
   uint8_t boardSelected;                                         // Selected board to show status in the MirrorLink web page
   uint8_t boardStatusBits[MAX_NUM_BOARDS];                       // Status bits of the boards on the station acc. to last sync
   uint8_t diagErrors;                                            // Diagnostic errors
+  uint8_t oldChannel;                                            // Previous channel than the last one
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
@@ -834,42 +837,56 @@ uint8_t MirrorLinkSelectChannel(void) {
   uint8_t selChannel = 0;
   bool channelFree = false;
   // start scanning current channel
-  int8_t state = CHANNEL_FREE;//lora.scanChannel();
   MLDEBUG_PRINTLN(F("Selecting channel"));
   // Send next channel to station
   if (MirrorLink.status.freqHopState == 1) {
+    // Update banned channel list and its duration
+    for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+      // Update banned list
+      if (MirrorLink.packetsLost[i] > MIRRORLINK_CHANNEL_BLACKLIST_NUM) {
+        // Ban channel
+        MirrorLink.bannedChannelTimer[i] = (millis() / 1000) + MIRRORLINK_CHANNEL_BLACKLIST_TIME;
+        // Reset ban counter
+        MirrorLink.packetsLost[i] = 0;
+      }
+    }
+    // Assure default channel is never banned
+    MirrorLink.bannedChannelTimer[((os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF)] = 0;
+    // Look for a channel a maximum of ML_CH_MAX times otherwise reset to default channel
     for (uint8_t i = 0; i < ML_CH_MAX; i++) {
       selChannel = random(0, ML_CH_MAX);
-      MLDEBUG_PRINT(F("Channel: "));
-      MLDEBUG_PRINTLN(selChannel);
-      if(state == PREAMBLE_DETECTED) {
-        // LoRa preamble was detected
-        MLDEBUG_PRINTLN(F(" -> Detected preamble, channel in use!"));
-        channelFree = false;
-      } 
-      else if(state == CHANNEL_FREE) {
-        // no preamble was detected, channel is free
-        MLDEBUG_PRINTLN(F(" -> channel is free!"));
+      // If ban is no longer valid
+      if (MirrorLink.bannedChannelTimer[i] <= (millis() / 1000)) {
+        MLDEBUG_PRINT(F("Channel: "));
+        MLDEBUG_PRINT(selChannel);
+        // Channel is free
+        MLDEBUG_PRINTLN(F(" -> Channel is valid!"));
         channelFree = true;
         break;
       }
+      else {
+        // no preamble was detected, channel is free
+        MLDEBUG_PRINTLN(F(" -> Channel is banned!"));
+        channelFree = false;
+        break;
+      }
     }
+    // In case no free channel found then switch to default one
+    if (channelFree == false) selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
   }
   else {
     channelFree = true;
     selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
     MLDEBUG_PRINT(F("Channel: "));
     MLDEBUG_PRINTLN(selChannel);
-    if(state == PREAMBLE_DETECTED) {
-      // LoRa preamble was detected
-      MLDEBUG_PRINTLN(F(" -> Detected preamble, channel in use!"));
-      channelFree = false;
-    } 
-    else if(state == CHANNEL_FREE) {
-      // no preamble was detected, channel is free
-      MLDEBUG_PRINTLN(F(" -> channel is free!"));
-      channelFree = true;
-    }
+  }
+  // Print list of channels and packetlost counter status
+  MLDEBUG_PRINTLN(F("Status Packet Lost per Channel: "));
+  for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+    MLDEBUG_PRINT(F("Packet Lost Channel "));
+    MLDEBUG_PRINT(i);
+    MLDEBUG_PRINT(F(": "));
+    MLDEBUG_PRINTLN(MirrorLink.packetsLost[i]);
   }
   return selChannel;
 }
@@ -1016,6 +1033,11 @@ void MirrorLinkInit(void) {
   MirrorLinkSetToDefaultKey(MirrorLink.key);
   MirrorLink.packetsSent = 0;
   MirrorLink.packetsReceived = 0;
+  for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+    MirrorLink.packetsLost[i] = 0;
+    MirrorLink.bannedChannelTimer[i] = 0;
+  }
+  MirrorLink.oldChannel = 0;
   MirrorLink.associationAttempts = 0;
   MirrorLink.dutyCycle = (((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE1] << 8) | ((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE2]));
   MirrorLink.bufferedCommands = 0;
@@ -1494,6 +1516,7 @@ void MirrorLinkState(void) {
                  && (MirrorLink.status.assOrNonceUpdateTriedFlag == 1) ) {
           // Report error
           MLDEBUG_PRINTLN(F("No answer received from station!"));
+
           // Make sure we send an association command to station
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
@@ -1768,11 +1791,15 @@ void MirrorLinkState(void) {
 
           // Report error
           MLDEBUG_PRINTLN(F("No answer received from station!"));
+          // Increase packet loss counter for current channel (the one the Station shall have used to transmit)
+          // and old channel (the one the remote has used). As it is not known if issue was on remote or on station
+          MirrorLink.packetsLost[MirrorLink.status.channelNumber]++;
+          MirrorLink.packetsLost[MirrorLink.oldChannel]++;
 
           // Command is lost, do not retry
           if (MirrorLink.bufferedCommands > 0) {
             MirrorLink.bufferedCommands--;
-            (MirrorLink.indexBufferTail++) % MIRRORLINK_BUFFERLENGTH;
+            MirrorLink.indexBufferTail = ((MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH);
           }
           
           MirrorLink.response = 0;
@@ -2217,7 +2244,7 @@ void MirrorLinkWork(void) {
           // Set channel and command association from station
           if (MirrorLink.status.mirrorlinkState == (uint32_t)MIRRORLINK_ASSOCIATE) {
             if (MirrorLink.status.assOrNonceUpdateTriedFlag == 0) {
-              nextChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+              nextChannel = ((((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF) + 1) % ML_CH_MAX);
             }
             else {
               nextChannel = ((MirrorLink.status.channelNumber + 1) % ML_CH_MAX);
@@ -2272,7 +2299,7 @@ void MirrorLinkWork(void) {
           // Wait for answer to association/change of keys request command
           MirrorLinkReceiveInit();
           if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) {
-            if (MirrorLink.status.channelNumber != (ML_CH_MAX - 1)) {
+            if (MirrorLink.status.channelNumber != ((os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF)) {
               MirrorLink.txTime = (lora.getTimeOnAir(8) / 1000);
               // Set send timer control
               MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
