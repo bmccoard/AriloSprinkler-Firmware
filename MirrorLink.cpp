@@ -127,7 +127,7 @@ struct MIRRORLINK {
   uint8_t boardSelected;                                         // Selected board to show status in the MirrorLink web page
   uint8_t boardStatusBits[MAX_NUM_BOARDS];                       // Status bits of the boards on the station acc. to last sync
   uint8_t diagErrors;                                            // Diagnostic errors
-  uint8_t oldChannel;                                            // Previous channel than the last one
+  uint8_t nextChannel;                                           // Next channel to be used after a packet/response has been exchanged
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
@@ -873,20 +873,29 @@ uint8_t MirrorLinkSelectChannel(void) {
     }
     // In case no free channel found then switch to default one
     if (channelFree == false) selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+    // Print list of channels and packetlost counter status
+    MLDEBUG_PRINTLN(F("Status Packet Lost per Channel: "));
+    for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+      MLDEBUG_PRINT(F("Packet Lost Channel "));
+      MLDEBUG_PRINT(i);
+      MLDEBUG_PRINT(F(": "));
+      MLDEBUG_PRINTLN(MirrorLink.packetsLost[i]);
+      MLDEBUG_PRINT(F("Banned Time Channel "));
+      MLDEBUG_PRINT(i);
+      MLDEBUG_PRINT(F(": "));
+      if (MirrorLink.bannedChannelTimer[i] >= (millis() / 1000)) {
+        MLDEBUG_PRINTLN((MirrorLink.bannedChannelTimer[i] - (millis() / 1000)));
+      }
+      else {
+        MLDEBUG_PRINTLN(0);
+      }
+    }
   }
   else {
     channelFree = true;
     selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
     MLDEBUG_PRINT(F("Channel: "));
     MLDEBUG_PRINTLN(selChannel);
-  }
-  // Print list of channels and packetlost counter status
-  MLDEBUG_PRINTLN(F("Status Packet Lost per Channel: "));
-  for (uint8_t i = 0; i < ML_CH_MAX; i++) {
-    MLDEBUG_PRINT(F("Packet Lost Channel "));
-    MLDEBUG_PRINT(i);
-    MLDEBUG_PRINT(F(": "));
-    MLDEBUG_PRINTLN(MirrorLink.packetsLost[i]);
   }
   return selChannel;
 }
@@ -1037,7 +1046,7 @@ void MirrorLinkInit(void) {
     MirrorLink.packetsLost[i] = 0;
     MirrorLink.bannedChannelTimer[i] = 0;
   }
-  MirrorLink.oldChannel = 0;
+  MirrorLink.nextChannel = 0;
   MirrorLink.associationAttempts = 0;
   MirrorLink.dutyCycle = (((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE1] << 8) | ((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE2]));
   MirrorLink.bufferedCommands = 0;
@@ -1504,6 +1513,8 @@ void MirrorLinkState(void) {
             // Update Link status
             MirrorLink.status.comStationState = ML_LINK_COM_NORMAL;
             MirrorLink.status.link = ML_LINK_UP;
+            // Change to next channel
+            MirrorLink.status.channelNumber = MirrorLink.nextChannel;
           }
           else {
             MLDEBUG_PRINTLN(F("Packet decryption failed!"));
@@ -1538,6 +1549,8 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_NORMAL;
+          // Update channel number
+          MirrorLink.status.channelNumber = MirrorLink.nextChannel;
           MirrorLinkReceiveInit();
           MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
           // Update Link status
@@ -1593,7 +1606,8 @@ void MirrorLinkState(void) {
           // Send encrypted message
           MirrorLinkTransmit(txArray);
 
-          MirrorLink.status.channelNumber = nextChannel;
+          // Update channel number
+          MirrorLink.nextChannel = nextChannel;
         }
         // If buffer not empty
         // change state to send
@@ -1629,7 +1643,7 @@ void MirrorLinkState(void) {
           // Send encrypted message
           MirrorLinkTransmit(txArray);
 
-          MirrorLink.status.channelNumber = nextChannel;
+          MirrorLink.nextChannel = nextChannel;
         }
       }
       break;
@@ -1658,6 +1672,7 @@ void MirrorLinkState(void) {
           MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
         }
       }
+      // Station
       else {
         if (   (MirrorLinkTransmitStatus() == true)
             || (MirrorLink.sendTimer <= millis())) {
@@ -1666,6 +1681,8 @@ void MirrorLinkState(void) {
           MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_RECEIVE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_RECEIVE;
+          // Update channel for next reception
+          MirrorLink.status.channelNumber = MirrorLink.nextChannel;
           MirrorLinkReceiveInit();
         }
       }
@@ -1752,6 +1769,9 @@ void MirrorLinkState(void) {
 
             // Update Link status
             MirrorLink.status.link = ML_LINK_UP;
+
+            // Update channel for next packet to be sent
+            MirrorLink.status.channelNumber = MirrorLink.nextChannel;
           }
           // Else if command received but not propertly decrypted go to association mode
           else {
@@ -1794,7 +1814,6 @@ void MirrorLinkState(void) {
           // Increase packet loss counter for current channel (the one the Station shall have used to transmit)
           // and old channel (the one the remote has used). As it is not known if issue was on remote or on station
           MirrorLink.packetsLost[MirrorLink.status.channelNumber]++;
-          MirrorLink.packetsLost[MirrorLink.oldChannel]++;
 
           // Command is lost, do not retry
           if (MirrorLink.bufferedCommands > 0) {
@@ -1841,11 +1860,11 @@ void MirrorLinkState(void) {
             // Process header
             MirrorLink.status.comStationState = ((decryptedBuffer[ML_CMD_1] & STATE_MASK) >> STATE_POS);
             MirrorLink.status.powerCmd = ((decryptedBuffer[ML_CMD_1] & POWERCMD_MASK) >> POWERCMD_POS);
-            MirrorLink.status.channelNumber = ((decryptedBuffer[ML_CMD_1] & CHNUMBER_MASK) >> CHNUMBER_POS);
+            MirrorLink.nextChannel = ((decryptedBuffer[ML_CMD_1] & CHNUMBER_MASK) >> CHNUMBER_POS);
             MirrorLink.command[ML_CMD_1] = ((uint32_t)decryptedBuffer[ML_CMD_1] & (CMD_REMOTE_MASK | PAYLOAD1_REMOTE_MASK));
             MirrorLink.command[ML_CMD_2] = (uint32_t)decryptedBuffer[ML_CMD_2];
             MLDEBUG_PRINT(F("Channel received:\t\t"));
-            MLDEBUG_PRINTLN(MirrorLink.status.channelNumber);
+            MLDEBUG_PRINTLN(MirrorLink.nextChannel);
             MLDEBUG_PRINT(F("PowerCMD received:\t\t"));
             #if defined(ENABLE_DEBUG_MIRRORLINK) /** Serial debug functions */
             // Calculate power level based on local max and powerCmd received from remote
@@ -2173,7 +2192,7 @@ void MirrorLinkState(void) {
               MirrorLink.status.comStationState = ((decryptedBuffer[0] & 0xC00000) >> STATE_POS);
               if (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION) {
                 MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> POWERCMD_POS);
-                MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> CHNUMBER_POS);
+                MirrorLink.nextChannel = ((decryptedBuffer[0] & 0x3C000) >> CHNUMBER_POS);
                 // Update first part of the nonce
                 MirrorLink.nonce[0] = decryptedBuffer[1];
                 // Start transmission timer
@@ -2290,7 +2309,8 @@ void MirrorLinkWork(void) {
           // Send encrypted message
           MirrorLinkTransmit(txArray);
 
-          MirrorLink.status.channelNumber = nextChannel;
+          // Update channel number
+          MirrorLink.nextChannel = nextChannel;
         }
         // If association/nonce update request sent
         else if (MirrorLinkTransmitStatus() == true) {
@@ -2345,7 +2365,7 @@ void MirrorLinkWork(void) {
             if (   (MirrorLink.status.comStationState == ML_LINK_COM_ASSOCIATION)
                 || (MirrorLink.status.comStationState == ML_LINK_COM_NONCEUPDATE) ) {
               MirrorLink.status.powerCmd = ((decryptedBuffer[0] & 0x3C0000) >> POWERCMD_POS);
-              MirrorLink.status.channelNumber = ((decryptedBuffer[0] & 0x3C000) >> CHNUMBER_POS);
+              MirrorLink.nextChannel = ((decryptedBuffer[0] & 0x3C000) >> CHNUMBER_POS);
               // Update first part of the nonce
               MirrorLink.nonce[0] = decryptedBuffer[1];
               // Start transmission timer
@@ -2411,7 +2431,7 @@ void MirrorLinkWork(void) {
       break;
     // Send state
     case MIRRORLINK_SEND:
-      // Remote
+      // Station
       if (MirrorLink.status.mirrorLinkStationType == ML_STATION) {
         // Send answer if not yet transmitted
         if (MirrorLink.status.flagRxTx == ML_RECEIVING) {

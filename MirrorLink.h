@@ -25,7 +25,7 @@
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 #define ENABLE_DEBUG_MIRRORLINK
-//#define ML_LOCALTEST
+#define ML_LOCALTEST
 
 // Config defines
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
