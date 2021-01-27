@@ -1779,11 +1779,11 @@ void MirrorLinkState(void) {
             MLDEBUG_PRINTLN(F("Packet decryption failed!"));
             MirrorLinkReceiveInit();
 
-            // Command is lost, do not retry
-            if (MirrorLink.bufferedCommands > 0) {
-              MirrorLink.bufferedCommands--;
-              (MirrorLink.indexBufferTail++) % MIRRORLINK_BUFFERLENGTH;
-            }
+            // Command is lost, do not retry -> Changed, it will be retried until successfully sent
+            // if (MirrorLink.bufferedCommands > 0) {
+            //   MirrorLink.bufferedCommands--;
+            //   (MirrorLink.indexBufferTail++) % MIRRORLINK_BUFFERLENGTH;
+            // }
             
             MirrorLink.response = 0;
             MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
@@ -2319,7 +2319,7 @@ void MirrorLinkWork(void) {
           // Wait for answer to association/change of keys request command
           MirrorLinkReceiveInit();
           if (MirrorLink.status.mirrorlinkState == MIRRORLINK_ASSOCIATE) {
-            if (MirrorLink.status.channelNumber != ((os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF)) {
+            if (MirrorLink.status.channelNumber != ((((os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF) + (ML_CH_MAX - 1)) % ML_CH_MAX)) {
               MirrorLink.txTime = (lora.getTimeOnAir(8) / 1000);
               // Set send timer control
               MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
@@ -2333,6 +2333,8 @@ void MirrorLinkWork(void) {
             // Calculate transmission-free time based on duty cycle and time of last message
             MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
           }
+          // Update channel
+          MirrorLink.status.channelNumber = MirrorLink.nextChannel;
           MLDEBUG_PRINT(F("SendTimer: "));
           MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
         }
