@@ -96,10 +96,10 @@ struct MIRRORLINK {
   uint32_t key[MIRRORLINK_SPECK_KEY_LEN];                        // Encryption key for the Link
   uint32_t nonceCtr[MIRRORLINK_SPECK_TEXT_LEN];                  // Nonce for the cipher plus counter
   uint32_t nonce[MIRRORLINK_SPECK_TEXT_LEN];                     // Nonce for the cipher
-  uint32_t sendTimer;                                            // Timer in seconds to control send timing
+  uint32_t sendTimer;                                            // Timer in milliseconds to control send timing
   MirrorLinkStateBitfield status;                                // Bittfield including states as well as several flags
-  uint32_t stayAliveTimer;                                       // Timer in seconds to control if remote and station are still connected
-  uint32_t stayAliveMaxPeriod;                                   // Maximum period in seconds configured to control if remote and station are still connected
+  uint32_t stayAliveTimer;                                       // Timer in milliseconds to control if remote and station are still connected
+  uint32_t stayAliveMaxPeriod;                                   // Maximum period in milliseconds configured to control if remote and station are still connected
   uint32_t nonceUpdateTimer;                                     // Timer to control the nonce update process
   uint32_t packetsSent;                                          // Number of sent packets
   uint32_t packetsReceived;                                      // Number of received packets
@@ -856,7 +856,7 @@ uint8_t MirrorLinkSelectChannel(void) {
     for (uint8_t i = 0; i < ML_CH_MAX; i++) {
       selChannel = random(0, ML_CH_MAX);
       // If ban is no longer valid
-      if (MirrorLink.bannedChannelTimer[i] <= (millis() / 1000)) {
+      if (MirrorLink.bannedChannelTimer[selChannel] <= (millis() / 1000)) {
         MLDEBUG_PRINT(F("Channel: "));
         MLDEBUG_PRINT(selChannel);
         // Channel is free
@@ -1103,7 +1103,7 @@ void MirrorLinkInit(void) {
 	// initialize SX1262 
 	// carrier frequency:           868.0 MHz
 	// bandwidth:                   125.0 kHz
-	// spreading factor:            7
+	// spreading factor:            12
 	// coding rate:                 5
 	// sync word:                   0x1424 (private network)
 	// output power:                16 dBm (30 dBm with E22-900T30S amplification)
@@ -1417,7 +1417,7 @@ void MirrorLinkStayAliveControl(void) {
     // If system currently enabled
     if (os.status.enabled) {
       // If timer reached
-      if (millis() > MirrorLink.stayAliveTimer) {
+      if (millis() >= MirrorLink.stayAliveTimer) {
         // Disable system
         os.disable();
         // Set default channel
@@ -1521,23 +1521,37 @@ void MirrorLinkState(void) {
             MirrorLinkReceiveInit();
           }
         }
-        // If timeout and nonce update has been attempted
+        // If timeout and nonce update or association has been attempted
         else if (  (MirrorLink.sendTimer <= millis())
                  && (MirrorLink.status.mirrorlinkState == MIRRORLINK_NONCEUPDATE)
                  && (MirrorLink.status.assOrNonceUpdateTriedFlag == 1) ) {
           // Report error
           MLDEBUG_PRINTLN(F("No answer received from station!"));
+          
+          // Increase packet loss counter for current channel (the one the Station shall have used to transmit)
+          // and old channel (the one the remote has used). As it is not known if issue was on remote or on station
+          MirrorLink.packetsLost[MirrorLink.status.channelNumber]++;
 
           // Make sure we send an association command to station
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-          MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+          // Try with new channel (maybe the STATION received the message propertly but the answer did not arrive back to the REMOTE)
+          MirrorLink.status.channelNumber = MirrorLink.nextChannel; //((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
           // Calculate transmission-free time based on duty cycle and time of last message
           MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
           MLDEBUG_PRINT(F("SendTimer: "));
           MLDEBUG_PRINTLN(MirrorLink.sendTimer - millis());
           // Update Link status
+          MirrorLink.status.link = ML_LINK_DOWN;
+        }
+        // If stayalive timer timeout the reset the channel to the default one
+        else if (MirrorLink.stayAliveTimer <= millis()) {
+          // Disable system
+          //os.disable();
+          // Set default channel
+          MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+          // MirrorLink status down
           MirrorLink.status.link = ML_LINK_DOWN;
         }
       }
@@ -1767,8 +1781,9 @@ void MirrorLinkState(void) {
             // Calculate transmission-free time based on duty cycle and time of last message
             MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
 
-            // Update Link status
+            // Update Link status and stayAliveTimer
             MirrorLink.status.link = ML_LINK_UP;
+            MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
 
             // Update channel for next packet to be sent
             MirrorLink.status.channelNumber = MirrorLink.nextChannel;
@@ -1789,7 +1804,9 @@ void MirrorLinkState(void) {
             MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
-            MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+            // Use again the next channel planned
+            MirrorLink.status.channelNumber = MirrorLink.nextChannel;
+            //MirrorLink.status.channelNumber = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
             // Calculate transmission-free time based on duty cycle and time of last message
             MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
 
@@ -1811,6 +1828,7 @@ void MirrorLinkState(void) {
 
           // Report error
           MLDEBUG_PRINTLN(F("No answer received from station!"));
+
           // Increase packet loss counter for current channel (the one the Station shall have used to transmit)
           // and old channel (the one the remote has used). As it is not known if issue was on remote or on station
           MirrorLink.packetsLost[MirrorLink.status.channelNumber]++;
@@ -2252,6 +2270,9 @@ void MirrorLinkWork(void) {
           byte txArray[MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH];
           uint32_t plainBuffer[MIRRORLINK_SPECK_TEXT_LEN];
           uint32_t encryptedBuffer[MIRRORLINK_SPECK_TEXT_LEN];
+
+          // Update channel
+          MirrorLink.status.channelNumber = MirrorLink.nextChannel;
 
           // Send association request
           // Process header

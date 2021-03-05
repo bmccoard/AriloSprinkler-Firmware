@@ -55,7 +55,7 @@
 #define MIRRORLINK_MIN_POWER_BUDGET        -90     // MirrorLink minimum link budget in dBm for proper reception
 #define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
 #define MIRRORLINK_CHANNEL_BLACKLIST_TIME   604800 // Time a channel surpasing the maximum number of fail transmissions (in the same period) shall be banned
-#define MIRRORLINK_CHANNEL_BLACKLIST_NUM    15     // Number of lost packets within MIRRORLINK_CHANNEL_BLACKLIST_TIME period to set the channel as banned
+#define MIRRORLINK_CHANNEL_BLACKLIST_NUM    3      // Number of lost packets within MIRRORLINK_CHANNEL_BLACKLIST_TIME period to set the channel as banned
 
 // Payload positions and masks
 #define CMD_STATION_POS                     24
