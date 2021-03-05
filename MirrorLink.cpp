@@ -1834,10 +1834,10 @@ void MirrorLinkState(void) {
           MirrorLink.packetsLost[MirrorLink.status.channelNumber]++;
 
           // Command is lost, do not retry
-          if (MirrorLink.bufferedCommands > 0) {
-            MirrorLink.bufferedCommands--;
-            MirrorLink.indexBufferTail = ((MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH);
-          }
+          //if (MirrorLink.bufferedCommands > 0) {
+          //  MirrorLink.bufferedCommands--;
+          //  MirrorLink.indexBufferTail = ((MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH);
+          //}
           
           MirrorLink.response = 0;
           MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
