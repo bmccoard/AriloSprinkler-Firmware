@@ -54,7 +54,7 @@
 #define MIRRORLINK_AMPLIF_FACTOR            14     // MirrorLink amplification factor in dB (amplifier plus antenna, for plain E22-900T30S with 0dB antenna is 14dBm -> for 16dBm tx, amplification up to 30dBm)
 #define MIRRORLINK_MIN_POWER_BUDGET        -90     // MirrorLink minimum link budget in dBm for proper reception
 #define MIRRORLINK_NETWORK_ID               0x94   // Default Network ID
-#define MIRRORLINK_ENABLE_BLACKLIST                // If defined blacklist is enabled
+//#define MIRRORLINK_ENABLE_BLACKLIST                // If defined blacklist is enabled
 #define MIRRORLINK_CHANNEL_BLACKLIST_TIME   604800 // Time a channel surpasing the maximum number of fail transmissions (in the same period) shall be banned
 #define MIRRORLINK_CHANNEL_BLACKLIST_NUM    15     // Number of lost packets within MIRRORLINK_CHANNEL_BLACKLIST_TIME period to set the channel as banned
 
