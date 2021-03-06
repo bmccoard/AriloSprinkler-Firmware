@@ -113,11 +113,11 @@ struct MIRRORLINK {
   int16_t moduleState;                                           // LORA module state
   uint16_t associationAttempts;                                  // Counter to control the number of association attempts
   uint16_t packetsLost[ML_CH_MAX];                               // Counter with the number of lost packets per channel within a defined timeframe
-  int16_t snrLocal;                                              // Local SNR (local reception)
-  int16_t rssiLocal;                                             // Local RSSI (local reception)
+  int16_t snrLocal[ML_CH_MAX];                                   // Local SNR (local reception)
+  int16_t rssiLocal[ML_CH_MAX];;                                 // Local RSSI (local reception)
   uint16_t dutyCycle;                                            // Maximum duty cycle in tenths of % (1 = 0.1)
-  int16_t snrRemote;                                             // Remote SNR (remote reception)
-  int16_t rssiRemote;                                            // Remote RSSI (remote reception)
+  int16_t snrRemote[ML_CH_MAX];;                                 // Remote SNR (remote reception)
+  int16_t rssiRemote[ML_CH_MAX];                                 // Remote RSSI (remote reception)
   uint8_t responseCommand;                                       // Response command from the station to the last command sent
   uint8_t bufferedCommands;                                      // Number of buffered commands to be sent
   uint8_t indexBufferHead;                                       // Index of the first element in the command buffer
@@ -610,7 +610,7 @@ String MirrorLinkStatusRadio() {
   mirrorLinkInfo += "\"rssis\":[";
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.link == ML_LINK_UP) {
-    mirrorLinkInfo += String(MirrorLink.rssiLocal);
+    mirrorLinkInfo += String(MirrorLink.rssiLocal[MirrorLink.status.channelNumber]);
   }
   else {
     mirrorLinkInfo += "N.A.";
@@ -620,7 +620,7 @@ String MirrorLinkStatusRadio() {
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
     if (MirrorLink.status.link == ML_LINK_UP) {
-      mirrorLinkInfo += String(MirrorLink.rssiRemote);
+      mirrorLinkInfo += String(MirrorLink.rssiRemote[MirrorLink.status.channelNumber]);
     }
     else {
       mirrorLinkInfo += "N.A.";
@@ -634,7 +634,7 @@ String MirrorLinkStatusRadio() {
   mirrorLinkInfo += "\"snrs\":[";
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.link == ML_LINK_UP) {
-    mirrorLinkInfo += String(((float)MirrorLink.snrLocal) / 10);
+    mirrorLinkInfo += String(((float)MirrorLink.snrLocal[MirrorLink.status.channelNumber]) / 10);
   }
   else {
     mirrorLinkInfo += "N.A.";
@@ -644,7 +644,7 @@ String MirrorLinkStatusRadio() {
   mirrorLinkInfo += "\"";
   if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
     if (MirrorLink.status.link == ML_LINK_UP) {
-      mirrorLinkInfo += String(((float)MirrorLink.snrRemote) / 10);
+      mirrorLinkInfo += String(((float)MirrorLink.snrRemote[MirrorLink.status.channelNumber]) / 10);
     }
     else {
       mirrorLinkInfo += "N.A.";
@@ -855,6 +855,7 @@ uint8_t MirrorLinkSelectChannel(void) {
     // Look for a channel a maximum of ML_CH_MAX times otherwise reset to default channel
     for (uint8_t i = 0; i < ML_CH_MAX; i++) {
       selChannel = random(0, ML_CH_MAX);
+#if defined(MIRRORLINK_ENABLE_BLACKLIST)
       // If ban is no longer valid
       if (MirrorLink.bannedChannelTimer[selChannel] <= (millis() / 1000)) {
         MLDEBUG_PRINT(F("Channel: "));
@@ -870,6 +871,9 @@ uint8_t MirrorLinkSelectChannel(void) {
         channelFree = false;
         break;
       }
+#else
+    channelFree = true;
+#endif
     }
     // In case no free channel found then switch to default one
     if (channelFree == false) selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
@@ -912,7 +916,7 @@ int8_t MirrorLinkPowerLevel(void) {
     if (MirrorLink.status.mirrorLinkStationType == ML_REMOTE) {
       // Calculate power level based on local max, snrremote and rssiremote
       // Power level = last Power Level + MIRRORLINK_MIN_POWER_BUDGET - (RSSI + SNR)
-      powerLevel = MirrorLink.powerLevel + MIRRORLINK_MIN_POWER_BUDGET - ((int16_t)MirrorLink.rssiRemote + (int16_t)(MirrorLink.snrRemote / 10));
+      powerLevel = MirrorLink.powerLevel + MIRRORLINK_MIN_POWER_BUDGET - ((int16_t)MirrorLink.rssiRemote[MirrorLink.status.channelNumber] + (int16_t)(MirrorLink.snrRemote[MirrorLink.status.channelNumber] / 10));
     }
     else {
       // Calculate power level based on local max and powerCmd received from remote
@@ -948,7 +952,7 @@ uint8_t MirrorLinkPowerCmdEncode(void) {
   int16_t stationPower = 0;
 
   // Calculate required station power
-  stationPower = (int16_t)MIRRORLINK_MIN_POWER_BUDGET - ((int16_t)MirrorLink.rssiLocal + (int16_t)(MirrorLink.snrLocal / 10));
+  stationPower = (int16_t)MIRRORLINK_MIN_POWER_BUDGET - ((int16_t)MirrorLink.rssiLocal[MirrorLink.status.channelNumber] + (int16_t)(MirrorLink.snrLocal[MirrorLink.status.channelNumber] / 10));
 
   // If link down use max power
   if (MirrorLink.status.link == ML_LINK_DOWN) stationPower = MirrorLink.powerMax;
@@ -1037,12 +1041,14 @@ void MirrorLinkInit(void) {
   MirrorLink.stayAliveMaxPeriod = ((uint32_t)MIRRORLINK_STAYALIVE_PERIOD * 1000);
   MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
   MirrorLink.nonceUpdateTimer = millis() + random(((uint32_t)MIRRORLINK_KEYCHANGE_MIN_TIME * 1000), ((uint32_t)MIRRORLINK_KEYCHANGE_MAX_TIME * 1000));
-  MirrorLink.snrLocal = -200;
-  MirrorLink.rssiLocal = -200;
   MirrorLinkSetToDefaultKey(MirrorLink.key);
   MirrorLink.packetsSent = 0;
   MirrorLink.packetsReceived = 0;
   for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+    MirrorLink.snrLocal[i] = -200;
+    MirrorLink.rssiLocal[i] = -200;
+    MirrorLink.snrRemote[i] = -200;
+    MirrorLink.rssiRemote[i] = -200;
     MirrorLink.packetsLost[i] = 0;
     MirrorLink.bannedChannelTimer[i] = 0;
   }
@@ -1058,8 +1064,6 @@ void MirrorLinkInit(void) {
   for (uint8_t i = 0; i < ML_CMD_MAX; i++) MirrorLink.command[i] = 0;
   MirrorLink.indexBufferHead = 0;
   MirrorLink.indexBufferTail = 0;
-  MirrorLink.snrRemote = -200;
-  MirrorLink.rssiRemote = -200;
   MirrorLink.txTime = 0;
   // Intern program to store program data sent by remote
   mirrorlinkProg.enabled = 0;
@@ -1298,14 +1302,14 @@ bool MirrorLinkReceive(byte *rxArray) {
       MLDEBUG_PRINT(F("[SX1262] RSSI:\t\t"));
       MLDEBUG_PRINT(signal);
       MLDEBUG_PRINTLN(F(" dBm"));
-      MirrorLink.rssiLocal = (int16_t)signal;
+      MirrorLink.rssiLocal[MirrorLink.status.channelNumber] = (int16_t)signal;
 
       signal = lora.getSNR();
       // print SNR (Signal-to-Noise Ratio)
       MLDEBUG_PRINT(F("[SX1262] SNR:\t\t"));
       MLDEBUG_PRINT(signal);
       MLDEBUG_PRINTLN(F(" dB"));
-      MirrorLink.snrLocal = (int16_t)(signal * 10);
+      MirrorLink.snrLocal[MirrorLink.status.channelNumber] = (int16_t)(signal * 10);
     }
     else if (MirrorLink.moduleState == ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
@@ -1726,19 +1730,19 @@ void MirrorLinkState(void) {
             MirrorLink.response = (uint32_t)(decryptedBuffer[1] & PAYLOAD2_STATION_MASK);
             // Gather SNR and RSSI from station
             // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
-            MirrorLink.rssiRemote = (int16_t)(((decryptedBuffer[1] & RSSI_STATION_P2_MASK) >> RSSI_STATION_P2_POS) | ((decryptedBuffer[0] & RSSI_STATION_P1_MASK) << RSSI_STATION_P1_POS));
+            MirrorLink.rssiRemote[MirrorLink.status.channelNumber] = (int16_t)(((decryptedBuffer[1] & RSSI_STATION_P2_MASK) >> RSSI_STATION_P2_POS) | ((decryptedBuffer[0] & RSSI_STATION_P1_MASK) << RSSI_STATION_P1_POS));
             if (decryptedBuffer[0] & RSSI_SIGN_STATION_P1_MASK) {
-              MirrorLink.rssiRemote *= -1;
+              MirrorLink.rssiRemote[MirrorLink.status.channelNumber] *= -1;
             }
-            MirrorLink.rssiRemote *= 2;
+            MirrorLink.rssiRemote[MirrorLink.status.channelNumber] *= 2;
 
             // Decode SNR from 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
-            MirrorLink.snrRemote = (int16_t)((decryptedBuffer[0] & SNR_STATION_MASK) >> SNR_STATION_POS);
+            MirrorLink.snrRemote[MirrorLink.status.channelNumber] = (int16_t)((decryptedBuffer[0] & SNR_STATION_MASK) >> SNR_STATION_POS);
 
             if (decryptedBuffer[0] & SNR_SIGN_STATION_MASK) {
-              MirrorLink.snrRemote *= -1;
+              MirrorLink.snrRemote[MirrorLink.status.channelNumber] *= -1;
             }
-            MirrorLink.snrRemote *= 2;
+            MirrorLink.snrRemote[MirrorLink.status.channelNumber] *= 2;
 
             // Diagnostics
             // If response command different than last command sent then report error
@@ -1812,8 +1816,8 @@ void MirrorLinkState(void) {
 
             // Update Link status
             MirrorLink.status.link = ML_LINK_DOWN;
-            MirrorLink.snrRemote = -200;
-            MirrorLink.rssiRemote = -200;
+            MirrorLink.snrRemote[MirrorLink.status.channelNumber] = -200;
+            MirrorLink.rssiRemote[MirrorLink.status.channelNumber] = -200;
 
             // Request change state to association for station
             MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
@@ -1851,8 +1855,8 @@ void MirrorLinkState(void) {
 
           // Update Link status
           MirrorLink.status.link = ML_LINK_DOWN;
-          MirrorLink.snrRemote = -200;
-          MirrorLink.rssiRemote = -200;
+          MirrorLink.snrRemote[MirrorLink.status.channelNumber] = -200;
+          MirrorLink.rssiRemote[MirrorLink.status.channelNumber] = -200;
 
           // Request change state to association for station
           MirrorLink.status.comStationState = (uint32_t)ML_LINK_COM_ASSOCIATION;
@@ -2465,38 +2469,38 @@ void MirrorLinkWork(void) {
           // Process header
           // Encode RSSI to 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
           uint8_t rssi, snr;
-          if (MirrorLink.rssiLocal >= 0) {
-            if ((MirrorLink.rssiLocal / 2) > 127) {
+          if (MirrorLink.rssiLocal[MirrorLink.status.channelNumber] >= 0) {
+            if ((MirrorLink.rssiLocal[MirrorLink.status.channelNumber] / 2) > 127) {
               rssi = (uint8_t)127;
             }
             else {
-              rssi = (uint8_t)(MirrorLink.rssiLocal / 2);
+              rssi = (uint8_t)(MirrorLink.rssiLocal[MirrorLink.status.channelNumber] / 2);
             }
           } 
           else {
-            if ((MirrorLink.rssiLocal / 2) < -127) {
+            if ((MirrorLink.rssiLocal[MirrorLink.status.channelNumber] / 2) < -127) {
               rssi = ((uint8_t)127 | 0x80);
             }
             else {
-              rssi = (((uint8_t)((MirrorLink.rssiLocal / 2) * -1)) | 0x80);
+              rssi = (((uint8_t)((MirrorLink.rssiLocal[MirrorLink.status.channelNumber] / 2) * -1)) | 0x80);
             }
           }
 
           // Encode SNR to 0.2 resolution in 8 bit (value range from -25.55dB to 25.55dB)
-          if (MirrorLink.snrLocal >= 0) {
-            if ((MirrorLink.snrLocal / 2) > 127) {
+          if (MirrorLink.snrLocal[MirrorLink.status.channelNumber] >= 0) {
+            if ((MirrorLink.snrLocal[MirrorLink.status.channelNumber] / 2) > 127) {
               snr = (uint8_t)127;
             }
             else {
-              snr = (uint8_t)(MirrorLink.snrLocal / 2);
+              snr = (uint8_t)(MirrorLink.snrLocal[MirrorLink.status.channelNumber] / 2);
             }
           } 
           else {
-            if ((MirrorLink.snrLocal / 2) < -127) {
+            if ((MirrorLink.snrLocal[MirrorLink.status.channelNumber] / 2) < -127) {
               snr = ((uint8_t)127 | 0x80);
             }
             else {
-              snr = (((uint8_t)((MirrorLink.snrLocal / 2) * -1)) | 0x80);
+              snr = (((uint8_t)((MirrorLink.snrLocal[MirrorLink.status.channelNumber] / 2) * -1)) | 0x80);
             }
           }
           plainBuffer[0] = ((((uint32_t)MirrorLink.status.networkId) << NETWORKID_POS) | ((((uint32_t)MirrorLink.status.comStationState) & 0x3) << STATE_POS) | ((((uint32_t)MirrorLink.status.powerCmd) & 0xF) << POWERCMD_POS) | ((((uint32_t)MirrorLink.status.channelNumber) & 0xF) << CHNUMBER_POS) | ((uint32_t)(snr & 0xFF) << SNR_STATION_POS) | ((uint32_t)(rssi & 0xFF) >> RSSI_STATION_P1_POS));
