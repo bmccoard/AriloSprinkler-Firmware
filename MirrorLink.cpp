@@ -837,60 +837,66 @@ String MirrorLinkStatusBoards() {
 uint8_t MirrorLinkSelectChannel(void) {
   uint8_t selChannel = 0;
   uint8_t numBannedChannels = 0;
-  bool channelFree = false;
+//  bool channelFree = false;
   // start scanning current channel
   MLDEBUG_PRINTLN(F("Selecting channel"));
   // Send next channel to station
   if (MirrorLink.status.freqHopState == 1) {
+#if defined(MIRRORLINK_ENABLE_BLACKLIST)
     // Update banned channel list and its duration
     for (uint8_t i = 0; i < ML_CH_MAX; i++) {
       // Update banned list
       if (MirrorLink.packetsLost[i] > MIRRORLINK_CHANNEL_BLACKLIST_NUM) {
-        // Increase banned channel counter
-        numBannedChannels++;
         // Ban channel
         MirrorLink.bannedChannelTimer[i] = (millis() / 1000) + MIRRORLINK_CHANNEL_BLACKLIST_TIME;
         // Reset ban counter
         MirrorLink.packetsLost[i] = 0;
       }
-      // If all channels but one are banned, free all channels
-      if (numBannedChannels == (ML_CH_MAX - 1)) {
-        for (uint8_t i = 0; i < ML_CH_MAX; i++) {
-          // Reset ban channel timer
-          MirrorLink.bannedChannelTimer[i] = 0;
-          // Reset ban counter
-          MirrorLink.packetsLost[i] = 0;
-        }
+      // Increase banned channel counter if needed
+      if (MirrorLink.bannedChannelTimer[i] > (millis() / 1000)) numBannedChannels++;
+    }
+    MLDEBUG_PRINT(F("Number of banned channels: "));
+    MLDEBUG_PRINTLN(numBannedChannels);
+    // If all channels but one are banned, free all channels
+    if (numBannedChannels == (ML_CH_MAX - 1)) {
+      for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+        // Reset ban channel timer
+        MirrorLink.bannedChannelTimer[i] = 0;
+        // Reset ban counter
+        MirrorLink.packetsLost[i] = 0;
       }
     }
     // Assure default channel is never banned
     MirrorLink.bannedChannelTimer[((os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF)] = 0;
+#endif
     // Look for a channel a maximum of ML_CH_MAX times otherwise reset to default channel
-    for (uint8_t i = 0; i < ML_CH_MAX; i++) {
+//    for (uint8_t i = 0; i < ML_CH_MAX; i++) {
       selChannel = random(0, ML_CH_MAX);
 #if defined(MIRRORLINK_ENABLE_BLACKLIST)
+      while (MirrorLink.bannedChannelTimer[selChannel] > (millis() / 1000)) selChannel = ((selChannel + 1) % ML_CH_MAX);
       // If ban is no longer valid
-      if (MirrorLink.bannedChannelTimer[selChannel] <= (millis() / 1000)) {
+//      if (MirrorLink.bannedChannelTimer[selChannel] <= (millis() / 1000)) {
         MLDEBUG_PRINT(F("Channel: "));
         MLDEBUG_PRINT(selChannel);
         // Channel is free
         MLDEBUG_PRINTLN(F(" -> Channel is valid!"));
-        channelFree = true;
-        break;
-      }
-      else {
-        // no preamble was detected, channel is free
-        MLDEBUG_PRINT(F("Channel: "));
-        MLDEBUG_PRINTLN(F(" -> Channel is banned!"));
-        channelFree = false;
-        break;
-      }
-#else
-    channelFree = true;
+//        channelFree = true;
+//        break;
+//      }
+      // else {
+      //   // no preamble was detected, channel is free
+      //   MLDEBUG_PRINT(F("Channel: "));
+      //   MLDEBUG_PRINT(selChannel);
+      //   MLDEBUG_PRINTLN(F(" -> Channel is banned!"));
+      //   channelFree = false;
+      //   break;
+      // }
+//#else
+//    channelFree = true;
 #endif
-    }
+//    }
     // In case no free channel found then switch to default one
-    if (channelFree == false) selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
+//    if (channelFree == false) selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
     // Print list of channels and packetlost counter status
     MLDEBUG_PRINTLN(F("Status Packet Lost per Channel: "));
     for (uint8_t i = 0; i < ML_CH_MAX; i++) {
@@ -898,6 +904,7 @@ uint8_t MirrorLinkSelectChannel(void) {
       MLDEBUG_PRINT(i);
       MLDEBUG_PRINT(F(": "));
       MLDEBUG_PRINTLN(MirrorLink.packetsLost[i]);
+#if defined(MIRRORLINK_ENABLE_BLACKLIST)
       MLDEBUG_PRINT(F("Banned Time Channel "));
       MLDEBUG_PRINT(i);
       MLDEBUG_PRINT(F(": "));
@@ -907,10 +914,11 @@ uint8_t MirrorLinkSelectChannel(void) {
       else {
         MLDEBUG_PRINTLN(0);
       }
+#endif
     }
   }
   else {
-    channelFree = true;
+//    channelFree = true;
     selChannel = ((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF);
     MLDEBUG_PRINT(F("Channel: "));
     MLDEBUG_PRINTLN(selChannel);
@@ -2304,6 +2312,9 @@ void MirrorLinkWork(void) {
           if (MirrorLink.status.mirrorlinkState == (uint32_t)MIRRORLINK_ASSOCIATE) {
             if (MirrorLink.assocRetryCtr < ML_CH_MAX) {
               nextChannel = ((MirrorLink.status.channelNumber + 1) % ML_CH_MAX);
+#if defined(MIRRORLINK_ENABLE_BLACKLIST)
+              while (MirrorLink.bannedChannelTimer[nextChannel] > (millis() / 1000)) nextChannel = ((nextChannel + 1) % ML_CH_MAX);
+#endif
             }
             else {
               //nextChannel = ((((uint32_t)(os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF) + 1) % ML_CH_MAX);
