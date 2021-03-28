@@ -1849,6 +1849,12 @@ void server_change_manual() {
 					// bit 25 to 26 = Not used
 					// bit 27 to 31 = cmd
 					MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, (uint32_t)(((uint32_t)(q->dur) << 9) | (((uint32_t)(sid)) << 1) | (uint32_t)1));
+
+					// Send time command over MirrorLink to get an update of the outputs
+					// Payload format: 
+					// bit 0 to 26 = Unix Timestamp in minutes! not seconds
+					// bit 27 to 31 = cmd
+					MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
 				}
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
@@ -1870,6 +1876,12 @@ void server_change_manual() {
 			// bit 25 to 26 = Not used
 			// bit 27 to 31 = cmd
 			MirrorLinkBuffCmd((uint8_t)ML_TESTSTATION, ((0xFFFF & sid) << 1));
+
+			// Send time command over MirrorLink to get an update of the outputs
+			// Payload format: 
+			// bit 0 to 26 = Unix Timestamp in minutes! not seconds
+			// bit 27 to 31 = cmd
+			MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
 		}
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 		turn_off_station(sid, curr_time);
