@@ -132,6 +132,7 @@ struct MIRRORLINK {
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
+void turn_off_station(byte sid, ulong curr_time);
 void schedule_test_station(byte sid, uint16_t duration);
 void change_program_data(int32_t pid, byte numprograms, ProgramStruct *prog);
 void delete_program_data(int32_t pid);
@@ -1947,11 +1948,34 @@ void MirrorLinkState(void) {
                     // bit 1 to 8 = sid
                     // bit 9 to 24 = time(sec)
                     // bit 25 to 31 = Not used
+
                     MirrorLinkGetCmd((uint8_t)ML_TESTSTATION, payload);
-                    sid = (byte) (0xFF & (payload[ML_CMD_2] >> 1));
-                    en = (uint8_t) (payload[ML_CMD_2] & 0x1);
                     timer = (uint16_t) ((0xFFFF) & (payload[ML_CMD_2] >> 9));
-                    schedule_test_station(sid, timer);
+                    sid = (byte) (0xFF & (payload[ML_CMD_2] >> 1));
+                    if (!((os.status.mas==sid+1) || (os.status.mas2==sid+1))) {
+                      en = (uint8_t) (payload[ML_CMD_2] & 0x1);
+                      if (en) {
+                        RuntimeQueueStruct *q = NULL;
+                        byte sqi = pd.station_qid[sid];
+                        // check if the station already has a schedule
+                        if (sqi!=0xFF) {	// if we, we will overwrite the schedule
+                          q = pd.queue+sqi;
+                        } else {	// otherwise create a new queue element
+                          q = pd.enqueue();
+                        }
+                        // if the queue is not full
+                        if (q) {
+                          q->st = 0;
+                          q->dur = timer;
+                          q->sid = sid;
+                          q->pid = 99;	// testing stations are assigned program index 99
+
+                          schedule_all_stations(os.now_tz());
+                        }
+                      } else {	// turn off station
+                        turn_off_station(sid, os.now_tz());
+                      }
+                    }
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     MLDEBUG_PRINTLN(F("COMMAND: ML_TESTSTATION"));
                     break;
@@ -2023,6 +2047,11 @@ void MirrorLinkState(void) {
                     // bit 11 to 12 = schedule type
                     // bit 13 to 20 = Number of programs in remote
                     // bit 21 to 31 = Not used
+                    
+                    // process interval day remainder (relative-> absolute)
+                    if (mirrorlinkProg.type == PROGRAM_TYPE_INTERVAL && mirrorlinkProg.days[1] > 1) {
+                      pd.drem_to_absolute(mirrorlinkProg.days);
+                    }
                     MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP, payload);
                     pid = (int16_t) (0x7F & payload[ML_CMD_2]);
                     mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload[ML_CMD_2] >> 7));
@@ -2050,9 +2079,11 @@ void MirrorLinkState(void) {
                     // Message format:
                     // bit 0 to 6 = program number (max. is 40)
                     // bit 7 to 22 = days
-                    // bit 23 to 31 = Not used
+                    // bit 23 to 24 = type
+                    // bit 25 to 31 = Not used
                     MirrorLinkGetCmd((uint8_t)ML_PROGRAMDAYS, payload);
                     pid = (int16_t) (0x7F & payload[ML_CMD_2]);
+                    mirrorlinkProg.type = (byte) (0x03 & (payload[ML_CMD_2] >> 23));
                     mirrorlinkProg.days[0] = (byte) (0xFF & (payload[ML_CMD_2] >> 15));
                     mirrorlinkProg.days[1] = (byte) (0xFF & (payload[ML_CMD_2] >> 7));
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;

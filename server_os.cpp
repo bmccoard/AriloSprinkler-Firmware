@@ -1095,6 +1095,11 @@ void server_change_program() {
 		// Send program data over MirrorLink
 		uint32_t payload = 0;
 
+		// Send ML_TIMESYNC
+		// bit 0 to 26 = Unix Timestamp in minutes! not seconds
+		// bit 27 to 31 = cmd
+		MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
+
 		if (newProgram == true) {
 			// Send program creation request
 			// bit 0 to 6 = program number (max. is 40)
@@ -1112,7 +1117,7 @@ void server_change_program() {
 		// bit 26 = Not used
 		// bit 27 to 31 = cmd
 		for (i=0;i<MAX_NUM_STARTTIMES;i++) {
-			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.starttime_type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
 		}
 
 		// Send program duration
@@ -1128,9 +1133,10 @@ void server_change_program() {
 		// Send program day setup
 		// bit 0 to 6 = program number (max. is 40)
 		// bit 7 to 22 = days
-		// bit 23 to 26 = Not used
+		// bit 23 to 24 = type
+		// bit 25 to 26 = Not used
 		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.type)) << 23) | (((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
 
 		// Send program main setup
 		// bit 0 to 6 = program number (max. is 40)
