@@ -2053,8 +2053,8 @@ void MirrorLinkState(void) {
                     // bit 11 to 12 = schedule type
                     // bit 13 to 20 = Number of programs in remote
                     // bit 21 to 31 = Not used
-                    
                     if (MirrorLink.lastCmd == ML_PROGRAMDAYS) {
+                      MirrorLink.lastCmd = ML_NO_CMD;
                       // process interval day remainder (relative-> absolute)
                       if (mirrorlinkProg.type == PROGRAM_TYPE_INTERVAL && mirrorlinkProg.days[1] > 1) {
                         pd.drem_to_absolute(mirrorlinkProg.days);
