@@ -129,6 +129,7 @@ struct MIRRORLINK {
   uint8_t diagErrors;                                            // Diagnostic errors
   uint8_t nextChannel;                                           // Next channel to be used after a packet/response has been exchanged
   uint8_t assocRetryCtr;                                         // Association retry counter
+  uint8_t lastCmd;                                               // Last command executed in a sequence
 } MirrorLink;
 
 void schedule_all_stations(ulong curr_time);
@@ -1060,6 +1061,7 @@ void MirrorLinkInit(void) {
     MirrorLink.nonceCtr[i] = 0;
   }
   MirrorLink.assocRetryCtr = 0;
+  MirrorLink.lastCmd = ML_NO_CMD;
   MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME* 1000);
   MirrorLink.stayAliveMaxPeriod = ((uint32_t)MIRRORLINK_STAYALIVE_PERIOD * 1000);
   MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
@@ -1948,7 +1950,7 @@ void MirrorLinkState(void) {
                     // bit 1 to 8 = sid
                     // bit 9 to 24 = time(sec)
                     // bit 25 to 31 = Not used
-
+                    MirrorLink.lastCmd = ML_NO_CMD;
                     MirrorLinkGetCmd((uint8_t)ML_TESTSTATION, payload);
                     timer = (uint16_t) ((0xFFFF) & (payload[ML_CMD_2] >> 9));
                     sid = (byte) (0xFF & (payload[ML_CMD_2] >> 1));
@@ -1984,59 +1986,63 @@ void MirrorLinkState(void) {
                     // bit 0 to 6 = program number (max. is 40)
                     // bit 7 = Add (1) or delete (0)
                     // bit 8 to 31 = Not used
-                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMADDDEL, payload);
-                    addProg = ((payload[ML_CMD_2] >> 7) & 0x1);
-                    pid = (int16_t) (0x7F & payload[ML_CMD_2]);
-                    sprintf_P(mirrorlinkProg.name, "%d", pid);
+                    // If command is not repeated then create program
+                    if (MirrorLink.lastCmd == ML_NO_CMD) {
+                      MirrorLink.lastCmd = ML_PROGRAMADDDEL;
+                      MirrorLinkGetCmd((uint8_t)ML_PROGRAMADDDEL, payload);
+                      addProg = ((payload[ML_CMD_2] >> 7) & 0x1);
+                      pid = (int16_t) (0x7F & payload[ML_CMD_2]);
+                      sprintf_P(mirrorlinkProg.name, "%d", pid);
 
-                    // If the request is to add (or modify) a program
-                    if (addProg)
-                    {
-                      // In case the new pid does not match the max. program number
-                      // SYNC issue identified, remove all programs
-                      if (pid != pd.nprograms) {
-                        // Delete all programs
-                        delete_program_data(-1);
-                        MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
+                      // If the request is to add (or modify) a program
+                      if (addProg)
+                      {
+                        // In case the new pid does not match the max. program number
+                        // SYNC issue identified, remove all programs
+                        if (pid != pd.nprograms) {
+                          // Delete all programs
+                          delete_program_data(-1);
+                          MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
+                        }
+                        // Otherwise create new program or modify existing one
+                        else {
+                          // Reset MirrorLinkProg
+                          mirrorlinkProg.enabled = 0;
+                          mirrorlinkProg.use_weather = 0;
+                          mirrorlinkProg.oddeven = 0;
+                          mirrorlinkProg.type = 0;
+                          mirrorlinkProg.starttime_type = 0;
+                          mirrorlinkProg.dummy1 = 0;
+                          mirrorlinkProg.days[0] = 0;
+                          mirrorlinkProg.days[1] = 0;
+                          for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
+                          for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+                          sprintf_P(mirrorlinkProg.name, "%d", 0);
+                          change_program_data(pid, pd.nprograms, &mirrorlinkProg);
+                        }
                       }
-                      // Otherwise create new program or modify existing one
-                      else {
-                        // Reset MirrorLinkProg
-                        mirrorlinkProg.enabled = 0;
-                        mirrorlinkProg.use_weather = 0;
-                        mirrorlinkProg.oddeven = 0;
-                        mirrorlinkProg.type = 0;
-                        mirrorlinkProg.starttime_type = 0;
-                        mirrorlinkProg.dummy1 = 0;
-                        mirrorlinkProg.days[0] = 0;
-                        mirrorlinkProg.days[1] = 0;
-                        for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
-                        for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
-                        sprintf_P(mirrorlinkProg.name, "%d", 0);
-                        change_program_data(pid, pd.nprograms, &mirrorlinkProg);
+                      // Request is to delete a program
+                      else
+                      {
+                        MLDEBUG_PRINT(F("Remove program/s: "));
+                        MLDEBUG_PRINTLN(pid);
+                        MLDEBUG_PRINT(F("Number of programs: "));
+                        MLDEBUG_PRINTLN(pd.nprograms);
+                        // In case the new pid to be removed is not within the available pid's range
+                        // SYNC issue identified, remove all programs
+                        if (pid >= pd.nprograms) {
+                          // Delete all programs
+                          delete_program_data(-1);
+                          MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
+                        }
+                        // Otherwise delete the program
+                        else {
+                          delete_program_data(pid);
+                        }
                       }
+                      MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
+                      MLDEBUG_PRINTLN(F("COMMAND: ML_PROGRAMADDDEL"));
                     }
-                    // Request is to delete a program
-                    else
-                    {
-                      MLDEBUG_PRINT(F("Remove program/s: "));
-                      MLDEBUG_PRINTLN(pid);
-                      MLDEBUG_PRINT(F("Number of programs: "));
-                      MLDEBUG_PRINTLN(pd.nprograms);
-                      // In case the new pid to be removed is not within the available pid's range
-                      // SYNC issue identified, remove all programs
-                      if (pid >= pd.nprograms) {
-                        // Delete all programs
-                        delete_program_data(-1);
-                        MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
-                      }
-                      // Otherwise delete the program
-                      else {
-                        delete_program_data(pid);
-                      }
-                    }
-                    MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
-                    MLDEBUG_PRINTLN(F("COMMAND: ML_PROGRAMADDDEL"));
                     break;
                   case ML_PROGRAMMAINSETUP:
                     // Message format:
@@ -2048,32 +2054,34 @@ void MirrorLinkState(void) {
                     // bit 13 to 20 = Number of programs in remote
                     // bit 21 to 31 = Not used
                     
-                    // process interval day remainder (relative-> absolute)
-                    if (mirrorlinkProg.type == PROGRAM_TYPE_INTERVAL && mirrorlinkProg.days[1] > 1) {
-                      pd.drem_to_absolute(mirrorlinkProg.days);
-                    }
-                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP, payload);
-                    pid = (int16_t) (0x7F & payload[ML_CMD_2]);
-                    mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload[ML_CMD_2] >> 7));
-                    mirrorlinkProg.use_weather = (uint8_t) (0x1 & (payload[ML_CMD_2] >> 8));
-                    mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload[ML_CMD_2] >> 9));
-                    sprintf_P(mirrorlinkProg.name, "%d", pid);
-                    change_program_data(pid, pd.nprograms, &mirrorlinkProg);
-                    // Reset MirrorLinkProg
-                    mirrorlinkProg.enabled = 0;
-                    mirrorlinkProg.use_weather = 0;
-                    mirrorlinkProg.oddeven = 0;
-                    mirrorlinkProg.type = 0;
-                    mirrorlinkProg.starttime_type = 0;
-                    mirrorlinkProg.dummy1 = 0;
-                    mirrorlinkProg.days[0] = 0;
-                    mirrorlinkProg.days[1] = 0;
-                    for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
-                    for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
-                    sprintf_P(mirrorlinkProg.name, "%d", 0);
+                    if (MirrorLink.lastCmd == ML_PROGRAMDAYS) {
+                      // process interval day remainder (relative-> absolute)
+                      if (mirrorlinkProg.type == PROGRAM_TYPE_INTERVAL && mirrorlinkProg.days[1] > 1) {
+                        pd.drem_to_absolute(mirrorlinkProg.days);
+                      }
+                      MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP, payload);
+                      pid = (int16_t) (0x7F & payload[ML_CMD_2]);
+                      mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload[ML_CMD_2] >> 7));
+                      mirrorlinkProg.use_weather = (uint8_t) (0x1 & (payload[ML_CMD_2] >> 8));
+                      mirrorlinkProg.oddeven = (uint8_t) (0x3 & (payload[ML_CMD_2] >> 9));
+                      sprintf_P(mirrorlinkProg.name, "%d", pid);
+                      change_program_data(pid, pd.nprograms, &mirrorlinkProg);
+                      // Reset MirrorLinkProg
+                      mirrorlinkProg.enabled = 0;
+                      mirrorlinkProg.use_weather = 0;
+                      mirrorlinkProg.oddeven = 0;
+                      mirrorlinkProg.type = 0;
+                      mirrorlinkProg.starttime_type = 0;
+                      mirrorlinkProg.dummy1 = 0;
+                      mirrorlinkProg.days[0] = 0;
+                      mirrorlinkProg.days[1] = 0;
+                      for (uint8_t i = 0; i < MAX_NUM_STARTTIMES; i++) mirrorlinkProg.starttimes[i] = 0;
+                      for (uint8_t i = 0; i < MAX_NUM_STATIONS; i++) mirrorlinkProg.durations[i] = 0;
+                      sprintf_P(mirrorlinkProg.name, "%d", 0);
 
-                    MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
-                    MLDEBUG_PRINTLN(F("COMMAND: ML_PROGRAMMAINSETUP"));
+                      MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
+                      MLDEBUG_PRINTLN(F("COMMAND: ML_PROGRAMMAINSETUP"));
+                    }
                     break;
                   case ML_PROGRAMDAYS:
                     // Message format:
@@ -2081,13 +2089,16 @@ void MirrorLinkState(void) {
                     // bit 7 to 22 = days
                     // bit 23 to 24 = type
                     // bit 25 to 31 = Not used
-                    MirrorLinkGetCmd((uint8_t)ML_PROGRAMDAYS, payload);
-                    pid = (int16_t) (0x7F & payload[ML_CMD_2]);
-                    mirrorlinkProg.type = (byte) (0x03 & (payload[ML_CMD_2] >> 23));
-                    mirrorlinkProg.days[0] = (byte) (0xFF & (payload[ML_CMD_2] >> 15));
-                    mirrorlinkProg.days[1] = (byte) (0xFF & (payload[ML_CMD_2] >> 7));
-                    MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
-                    MLDEBUG_PRINTLN(F("COMMAND: ML_PROGRAMDAYS"));
+                    if (MirrorLink.lastCmd == ML_PROGRAMDURATION) {
+                      MirrorLink.lastCmd = ML_PROGRAMDAYS;
+                      MirrorLinkGetCmd((uint8_t)ML_PROGRAMDAYS, payload);
+                      pid = (int16_t) (0x7F & payload[ML_CMD_2]);
+                      mirrorlinkProg.type = (byte) (0x03 & (payload[ML_CMD_2] >> 23));
+                      mirrorlinkProg.days[0] = (byte) (0xFF & (payload[ML_CMD_2] >> 15));
+                      mirrorlinkProg.days[1] = (byte) (0xFF & (payload[ML_CMD_2] >> 7));
+                      MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
+                      MLDEBUG_PRINTLN(F("COMMAND: ML_PROGRAMDAYS"));
+                    }
                     break;
                   case ML_PROGRAMSTARTTIME:
                     // Message format:
@@ -2096,6 +2107,7 @@ void MirrorLinkState(void) {
                     // bit 9 to 24 = start time
                     // bit 25 = Starttime type
                     // bit 31 = Not used
+                    MirrorLink.lastCmd = ML_PROGRAMSTARTTIME;
                     MirrorLinkGetCmd((uint8_t)ML_PROGRAMSTARTTIME, payload);
                     pid = (int16_t)(payload[ML_CMD_2] & 0x7F);
                     stTimeNum = (uint8_t)((payload[ML_CMD_2] >> 7) & 0x3);
@@ -2103,13 +2115,13 @@ void MirrorLinkState(void) {
                     mirrorlinkProg.starttime_type = (uint8_t)((payload[ML_CMD_2] >> 25) & 0x1);
                     MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
                     MLDEBUG_PRINTLN(F("COMMAND: ML_PROGRAMSTARTTIME"));
-                    break;
                   case ML_PROGRAMDURATION:
                     // Message format:
                     // bit 0 to 6 = program number (max. is 40)
                     // bit 7 to 14 = sid
                     // bit 15 to 25 = time (min)
                     // bit 31 = Not used
+                    MirrorLink.lastCmd = ML_PROGRAMDURATION;
                     MirrorLinkGetCmd((uint8_t)ML_PROGRAMDURATION, payload);
                     pid = (int16_t)(payload[ML_CMD_2] & 0x7F);
                     sid = (byte)((payload[ML_CMD_2] >> 7) & 0xFF);
@@ -2121,6 +2133,7 @@ void MirrorLinkState(void) {
                     // Message format:
                     // bit 0 to 26 = Unix Timestamp in minutes! not seconds
                     // bit 27 to 31 = Not used
+                    MirrorLink.lastCmd = ML_NO_CMD;
                     MirrorLinkGetCmd((uint8_t)ML_TIMESYNC, payload);
                     setTime((time_t)(60*(0x7FFFFFF & payload[ML_CMD_2])));
                     RTC.set((time_t)(60*(0x7FFFFFF & payload[ML_CMD_2])));
