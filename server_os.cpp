@@ -1095,22 +1095,12 @@ void server_change_program() {
 		// Send program data over MirrorLink
 		uint32_t payload = 0;
 
-		//if (newProgram == true) {
-			// Send program creation request
-			// bit 0 to 6 = program number (max. is 40)
-			// bit 7 = Add (1) or remove (0)
-			// bit 8 to 16 = Not used
-			// bit 27 to 31 = cmd
-			//MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
-		//}
-
 		// Send program starttime
 		// bit 0 to 6 = program number (max. is 40)
 		// bit 7 to 8 = start time number (max. is 4 for each program)
 		// bit 9 to 24 = start time
 		// bit 25 = Starttime type
-		// bit 26 = Not used
-		// bit 27 to 31 = cmd
+		// bit 26 to 31 = Not used
 		for (i=0;i<MAX_NUM_STARTTIMES;i++) {
 			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMSTARTTIME, (uint32_t)(((uint32_t)(prog.starttime_type) << 25) | (((uint32_t)(prog.starttimes[i])) << 9) | (((uint32_t)i << 7) | (uint32_t)(pid))));
 		}
@@ -1119,8 +1109,7 @@ void server_change_program() {
 		// bit 0 to 6 = program number (max. is 40)
 		// bit 7 to 14 = sid
 		// bit 15 to 25 = time (min)
-		// bit 26 = Not used
-		// bit 27 to 31 = cmd
+		// bit 26 to 31 = Not used
 		for(i=0;i<os.nstations;i++) {
 			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDURATION, (uint32_t)(((uint32_t)(0x7FF & ((prog.durations[i]) / 60)) << 15) | (((uint32_t)i) << 7) | (uint32_t)(pid)));
 		}
@@ -1128,10 +1117,8 @@ void server_change_program() {
 		// Send program day setup
 		// bit 0 to 6 = program number (max. is 40)
 		// bit 7 to 22 = days
-		// bit 23 to 24 = type
-		// bit 25 to 26 = Not used
-		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.type)) << 23) | (((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
+		// bit 23 to 31 = Not used
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMDAYS, (uint32_t)((((uint32_t)(prog.days[0])) << 15) | (((uint32_t)prog.days[1]) << 7) | (uint32_t)(pid)));
 
 		// Send program main setup
 		// bit 0 to 6 = program number (max. is 40)
@@ -1139,9 +1126,9 @@ void server_change_program() {
 		// bit 8 = use weather
 		// bit 9 to 10 = Odd/even restriction
 		// bit 11 to 12 = schedule type
-		// bit 13 to 26 = Not used
-		// bit 27 to 31 = cmd
-		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
+		// bit 13 to 20 = Number of programs in remote
+		// bit 21 to 31 = Not used
+		MirrorLinkBuffCmd((uint8_t)ML_PROGRAMMAINSETUP, (uint32_t)((((uint32_t)pd.nprograms) << 13) | (((uint32_t)prog.type) << 11) | (((uint32_t)prog.oddeven) << 9) | (((uint32_t)prog.use_weather) << 8) | (((uint32_t)prog.enabled) << 7) | (uint32_t)(pid)));
 	}
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	handle_return(HTML_SUCCESS);
