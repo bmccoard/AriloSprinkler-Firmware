@@ -26,19 +26,23 @@
 
 // Special config defines
 #define ENABLE_DEBUG_MIRRORLINK
-//#define ML_LOCALTEST
+#define ML_LOCALTEST
 #define MIRRORLINK_ENABLE_BLACKLIST                // If defined blacklist is enabled
 #define RADIOLIB_GODMODE
 
 // Config defines
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
 #define MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH 8      // Length in bytes from the Lora messages
+#if defined(ML_LOCALTEST)
+#define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  80     // Period in seconds to send the regular commands to remote station (fast)
+#else
 #define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  300    // Period in seconds to send the regular commands to remote station (fast)
+#endif
 #define MIRRORLINK_REGCOMMANDS_MID_PERIOD   86400  // Period in seconds to send the regular commands to remote station (mid)
 #define MIRRORLINK_REGCOMMANDS_SLOW_PERIOD  604800 // Period in seconds to send the regular commands to remote station (slow)
 #define MIRRORLINK_RXTX_MAX_TIME            5      // Maximum time in seconds to wait for response from station or command / response transmission
 #if defined(ML_LOCALTEST)
-#define MIRRORLINK_STAYALIVE_PERIOD         900//600    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
+#define MIRRORLINK_STAYALIVE_PERIOD         90     // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #else
 #define MIRRORLINK_STAYALIVE_PERIOD         900    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #endif

@@ -1080,7 +1080,7 @@ void MirrorLinkInit(void) {
   MirrorLink.nextChannel = 0;
   MirrorLink.associationAttempts = 0;
 #if defined(ML_LOCALTEST)
-  MirrorLink.dutyCycle = (uint16_t)(1000);
+  MirrorLink.dutyCycle = (uint16_t)(900);
 #else
   MirrorLink.dutyCycle = (uint16_t)(((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE1] << 8) | ((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE2]));
 #endif
@@ -2428,7 +2428,8 @@ void MirrorLinkWork(void) {
             // if (MirrorLink.status.channelNumber != ((((os.iopts[IOPT_ML_DEFCHANNEL]) & 0xF) + (ML_CH_MAX - 1)) % ML_CH_MAX)) {
               MirrorLink.txTime = (lora.getTimeOnAir(8) / 1000);
               // Set send timer control
-              MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
+              MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+              //MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
             // }
             }
             else {
@@ -2438,7 +2439,8 @@ void MirrorLinkWork(void) {
           }
           else {
             // Calculate transmission-free time based on duty cycle and time of last message
-            MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
+            MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
+            //MirrorLink.sendTimer = millis() + (((MirrorLink.txTime * 2) * (10000 / (MirrorLink.dutyCycle))) / 10);
           }
           // Update channel
           MirrorLink.status.channelNumber = MirrorLink.nextChannel;
