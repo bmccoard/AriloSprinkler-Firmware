@@ -1153,7 +1153,7 @@ void MirrorLinkInit(void) {
     MLDEBUG_PRINTLN(F("Current limit configure exceedes max.!"));
 	}
 
-#if defined(MIRRORLINK_MODRADIOLIB)
+#if defined(RADIOLIB_GODMODE)
   // Set SX126x_REG_RX_GAIN to 0x96 -> LNA +3dB gain SX126xWriteRegister( SX126x_REG_RX_GAIN, 0x96 );
   uint16_t modReg = 0x08AC; //SX126X_REG_RX_GAIN
   uint8_t modData[1] = { 0x96 };
@@ -1161,7 +1161,7 @@ void MirrorLinkInit(void) {
   if (MirrorLink.moduleState != ERR_NONE) {
     MLDEBUG_PRINTLN(F("LNA max gain not set successfully!"));
   }
-#endif //defined(MIRRORLINK_MODRADIOLIB)
+#endif //defined(RADIOLIB_GODMODE)
 
   // Set the function that will be called
   // when new packet is transmitted or received

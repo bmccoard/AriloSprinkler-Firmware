@@ -28,6 +28,7 @@
 #define ENABLE_DEBUG_MIRRORLINK
 //#define ML_LOCALTEST
 #define MIRRORLINK_ENABLE_BLACKLIST                // If defined blacklist is enabled
+#define RADIOLIB_GODMODE
 
 // Config defines
 #define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
@@ -42,7 +43,6 @@
 #define MIRRORLINK_STAYALIVE_PERIOD         900    // Maximum time in seconds w/o message reception from counterpart station to consider the link dead
 #endif
 #define MIRRORLINK_RXTX_DEAD_TIME           2      // Time in seconds after receiving a message, to start transmitting one
-#define MIRRORLINK_MODRADIOLIB                     // If defined Radiohead protected writeRegister function needs to be accesible (move away from protected in class)
 #if defined(ML_LOCALTEST)
 #define MIRRORLINK_KEYCHANGE_MAX_TIME       3600//120    // Maximum period in seconds to renew the keys
 #define MIRRORLINK_KEYCHANGE_MIN_TIME       900//60     // Minimum period in seconds to renew the keys
