@@ -1079,7 +1079,11 @@ void MirrorLinkInit(void) {
   }
   MirrorLink.nextChannel = 0;
   MirrorLink.associationAttempts = 0;
-  MirrorLink.dutyCycle = (((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE1] << 8) | ((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE2]));
+#if defined(ML_LOCALTEST)
+  MirrorLink.dutyCycle = (uint16_t)(1000);
+#else
+  MirrorLink.dutyCycle = (uint16_t)(((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE1] << 8) | ((uint32_t)os.iopts[IOPT_ML_DUTYCYCLE2]));
+#endif
   MirrorLink.bufferedCommands = 0;
   for (uint8_t i = 0; i < ML_CMD_MAX; i++) {
     for (uint8_t j = 0; j < MIRRORLINK_BUFFERLENGTH; j++) {
