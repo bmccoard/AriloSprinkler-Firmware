@@ -26,7 +26,7 @@
 
 // Special config defines
 #define ENABLE_DEBUG_MIRRORLINK
-#define ML_LOCALTEST
+//#define ML_LOCALTEST
 #define MIRRORLINK_ENABLE_BLACKLIST                // If defined blacklist is enabled
 #define RADIOLIB_GODMODE
 
