@@ -2063,9 +2063,9 @@ void MirrorLinkState(void) {
                     if (MirrorLink.lastCmd == ML_PROGRAMDAYS) {
                       MirrorLink.lastCmd = ML_NO_CMD;
                       // process interval day remainder (relative-> absolute)
-                      if (mirrorlinkProg.type == PROGRAM_TYPE_INTERVAL && mirrorlinkProg.days[1] > 1) {
-                        pd.drem_to_absolute(mirrorlinkProg.days);
-                      }
+                      // if (mirrorlinkProg.type == PROGRAM_TYPE_INTERVAL && mirrorlinkProg.days[1] > 1) {
+                      //   pd.drem_to_absolute(mirrorlinkProg.days);
+                      // }
                       MirrorLinkGetCmd((uint8_t)ML_PROGRAMMAINSETUP, payload);
                       pid = (int16_t) (0x7F & payload[ML_CMD_2]);
                       mirrorlinkProg.enabled = (uint8_t)(0x1 & (payload[ML_CMD_2] >> 7));
