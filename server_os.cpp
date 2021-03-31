@@ -1095,14 +1095,14 @@ void server_change_program() {
 		// Send program data over MirrorLink
 		uint32_t payload = 0;
 
-		if (newProgram == true) {
+		//if (newProgram == true) {
 			// Send program creation request
 			// bit 0 to 6 = program number (max. is 40)
 			// bit 7 = Add (1) or remove (0)
 			// bit 8 to 16 = Not used
 			// bit 27 to 31 = cmd
-			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
-		}
+			//MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (((uint32_t)(1) << 7) | (uint32_t)(pid)));
+		//}
 
 		// Send program starttime
 		// bit 0 to 6 = program number (max. is 40)
