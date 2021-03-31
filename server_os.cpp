@@ -911,9 +911,14 @@ void server_delete_program() {
 			// Send program deletion request
 			// bit 0 to 6 = program number (max. is 40)
 			// bit 7 = Add (1) or remove (0)
-			// bit 8 to 16 = Not used
+			// bit 8 to 31 = Not used
+
+			// Send time command over MirrorLink to get an update of the outputs
+			// Payload format: 
+			// bit 0 to 26 = Unix Timestamp in minutes! not seconds
 			// bit 27 to 31 = cmd
-			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (uint32_t)(pid & 0xFF));
+			MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
+			MirrorLinkBuffCmd((uint8_t)ML_PROGRAMADDDEL, (uint32_t)(pid & 0x7F));
 		}
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 	} else {
@@ -975,9 +980,6 @@ void server_change_program() {
 #endif
 
 	byte i;
-#if defined(ESP32) && defined(MIRRORLINK_ENABLE)
-	bool newProgram = false;
-#endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 	ProgramStruct prog;
 
@@ -1073,7 +1075,6 @@ void server_change_program() {
 		else {
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 			if (MirrorLinkGetStationType() == ML_REMOTE) {
-				newProgram = true;
 				if (numPrograms > 0) {
 					pid = numPrograms - 1;
 				}
@@ -1087,6 +1088,7 @@ void server_change_program() {
 #endif //defined(ESP32) && defined(MIRRORLINK_ENABLE)
 		}
 	} else {
+		sprintf_P(prog.name, "%d", pid);
 		if(!pd.modify(pid, &prog)) handle_return(HTML_DATA_OUTOFBOUND);
 	}
 

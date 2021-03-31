@@ -404,14 +404,12 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // bit 0 = status (1 = On, 0 = Off)
       // bit 1 to 8 = sid
       // bit 9 to 24 = time(sec)
-      // bit 25 to 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 25 to 31 = Not used
     case ML_PROGRAMADDDEL:
       // Buffer message format:
       // bit 0 to 6 = program number (max. is 40)
       // bit 7 = Add (1) or delete (0)
-      // bit 8 to 16 = Not used
-      // bit 27 to 31 = cmd
+      // bit 8 to 31 = Not used
     case ML_PROGRAMMAINSETUP:
       // Buffer message format:
       // bit 0 to 6 = program number (max. is 40)
@@ -419,37 +417,33 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
       // bit 8 = use weather
       // bit 9 to 10 = Odd/even restriction
       // bit 11 to 12 = schedule type
-      // bit 13 to 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 13 to 31 = Not used
     case ML_PROGRAMDAYS:
       // Buffer message format:
       // bit 0 to 6 = program number (max. is 40)
       // bit 7 to 22 = days
-      // bit 23 to 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 23 to 31 = Not used
     case ML_PROGRAMSTARTTIME:
       // Buffer message format:
       // bit 0 to 6 = program number (max. is 40)
       // bit 7 to 8 = start time number (max. is 4 for each program)
       // bit 9 to 24 = start time
       // bit 25 = Starttime type
-      // bit 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 26 to 31 = Not used
     case ML_PROGRAMDURATION:
       // Buffer message format:
       // bit 0 to 6 = program number (max. is 40)
       // bit 7 to 14 = sid
       // bit 15 to 25 = time (min)
-      // bit 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 26 to 31 = Not used
     case ML_TIMESYNC:
       // Buffer message format:
       // bit 0 to 26 = Unix Timestamp in minutes! not seconds
-      // bit 27 to 31 = cmd
+      // bit 27 to 31 = Not used
     case ML_TIMEZONESYNC:
       // Buffer message format:
       // bit 0 to 7 = Time zone
-      // bit 27 to 31 = cmd
+      // bit 27 to 31 = Not used
     case ML_CURRENTREQUEST:
       // TODO:
     case ML_EMERGENCYSHUTDOWN:
@@ -458,29 +452,25 @@ void MirrorLinkBuffCmd(uint8_t cmd, uint32_t payload) {
     case ML_LATITUDE:
       // Buffer message format:
       // bit 0 to 23 = latitude
-      // bit 24 to 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 24 to 31 = Not used
     case ML_LONGITUDE:
       // Buffer message format:
       // bit 0 to 23 = longitude
-      // bit 24 to 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 24 to 31 = Not used
     case ML_SUNRISE:      
       // Buffer message format:
       // bit 0 to 15 = sunrise time
-      // bit 16 to 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 16 to 31 = Not used
     case ML_SUNSET:
       // Buffer message format:
       // bit 0 to 15 = sunset time
-      // bit 16 to 26 = Not used
-      // bit 27 to 31 = cmd
+      // bit 16 to 31 = Not used
     case ML_RAINDELAYSTOPTIME:
       // TODO:
     case ML_STAYALIVE:
       // Payload format: 
       // bit 0 to 26 = Stayalive configured counter
-      // bit 27 to 31 = cmd
+      // bit 27 to 31 = Not used
       if (MirrorLink.bufferedCommands < MIRRORLINK_BUFFERLENGTH) {
         MirrorLink.bufferedCommands++;
         MirrorLink.payloadBuffer[ML_CMD_1][MirrorLink.indexBufferHead] = ((uint32_t)(0x3F & (uint16_t)cmd) << CMD_REMOTE_POS);
@@ -2006,6 +1996,10 @@ void MirrorLinkState(void) {
                       // If the request is to add (or modify) a program
                       if (addProg)
                       {
+                        MLDEBUG_PRINT(F("Add program: "));
+                        MLDEBUG_PRINTLN(pid);
+                        MLDEBUG_PRINT(F("Number of programs: "));
+                        MLDEBUG_PRINTLN(pd.nprograms);
                         // In case the new pid does not match the max. program number
                         // SYNC issue identified, remove all programs
                         if (pid != pd.nprograms) {
@@ -2041,12 +2035,14 @@ void MirrorLinkState(void) {
                         // SYNC issue identified, remove all programs
                         if (pid >= pd.nprograms) {
                           // Delete all programs
-                          delete_program_data(-1);
+                          pd.eraseall();
+                          //delete_program_data(-1);
                           MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
                         }
                         // Otherwise delete the program
                         else {
-                          delete_program_data(pid);
+                          pd.del(pid);
+                          //delete_program_data(pid);
                         }
                       }
                       MirrorLink.stayAliveTimer = millis() + MirrorLink.stayAliveMaxPeriod;
