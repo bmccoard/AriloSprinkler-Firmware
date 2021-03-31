@@ -1126,32 +1126,35 @@ void MirrorLinkInit(void) {
   pinMode(LORA_RXEN, OUTPUT); // RXEN
   pinMode(LORA_TXEN, OUTPUT); // TXEN
 
-	// SCLK GPIO 5, MISO GPIO 19, MOSI GPIO 27, CS == NSS GPIO 18
-	SPI.begin(LORA_SCLK, LORA_MISO, LORA_MOSI, LORA_NSS);
-	MLDEBUG_PRINT(F("[SX1262] Initializing ... "));
-	// initialize SX1262 
-	// carrier frequency:           868.0 MHz
-	// bandwidth:                   125.0 kHz
-	// spreading factor:            12
-	// coding rate:                 5
-	// sync word:                   0x1424 (private network)
-	// output power:                16 dBm (30 dBm with E22-900T30S amplification)
-	// current limit:               120 mA
-	// preamble length:             8 symbols
-	// CRC:                         enabled
-	MirrorLink.moduleState = lora.begin(MirrorLinkFreqs[MirrorLink.status.channelNumber], 125.0, 12, 5, SX126X_SYNC_WORD_PRIVATE, 16 , 8, (float)(1.8), true);
-	if (MirrorLink.moduleState == ERR_NONE) {
+  // SCLK GPIO 5, MISO GPIO 19, MOSI GPIO 27, CS == NSS GPIO 18
+  SPI.begin(LORA_SCLK, LORA_MISO, LORA_MOSI, LORA_NSS);
+  MLDEBUG_PRINT(F("[SX1262] Initializing ... "));
+  // initialize SX1262 
+  // carrier frequency:           868.0 MHz
+  // bandwidth:                   125.0 kHz
+  // spreading factor:            12
+  // coding rate:                 5
+  // sync word:                   0x1424 (private network)
+  // output power:                16 dBm (30 dBm with E22-900T30S amplification)
+  // current limit:               120 mA
+  // preamble length:             8 symbols
+  // CRC:                         enabled
+  MirrorLink.moduleState = lora.begin(MirrorLinkFreqs[MirrorLink.status.channelNumber], 125.0, 12, 5, SX126X_SYNC_WORD_PRIVATE, 16 , 8, (float)(1.8), true);
+  if (MirrorLink.moduleState == ERR_NONE) {
     MLDEBUG_PRINTLN(F("success!"));
-	} else {
-		MLDEBUG_PRINT(F("failed, code "));
-		MLDEBUG_PRINTLN(MirrorLink.moduleState);
-	}
+  } else {
+    MLDEBUG_PRINT(F("failed, code "));
+    MLDEBUG_PRINTLN(MirrorLink.moduleState);
+  }
+
+  // Set automatic LRDO
+  lora.autoLDRO();
 
   // Current limitation
   MirrorLink.moduleState = lora.setCurrentLimit(120.0);
-	if (MirrorLink.moduleState == ERR_INVALID_CURRENT_LIMIT) {
+  if (MirrorLink.moduleState == ERR_INVALID_CURRENT_LIMIT) {
     MLDEBUG_PRINTLN(F("Current limit configure exceedes max.!"));
-	}
+  }
 
 #if defined(RADIOLIB_GODMODE)
   // Set SX126x_REG_RX_GAIN to 0x96 -> LNA +3dB gain SX126xWriteRegister( SX126x_REG_RX_GAIN, 0x96 );
