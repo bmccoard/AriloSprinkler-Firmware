@@ -26,6 +26,10 @@
 #include "weather.h"
 
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
+#if defined(DISABLE_ESP32_BROWNOUT)
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+#endif //defined(DISABLE_ESP32_BROWNOUT)
 
 // Pin definition
 #define LORA_NSS  18
@@ -1111,6 +1115,11 @@ void MirrorLinkInit(void) {
 
 	MLDEBUG_BEGIN(115200);
 
+  // Brownout disabled
+  #if defined(DISABLE_ESP32_BROWNOUT)
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector  
+  #endif //defined(DISABLE_ESP32_BROWNOUT)
+
 	// Configure LORA module pins
 	pinMode(LORA_SCLK, OUTPUT); // SCLK
 	pinMode(LORA_MISO, INPUT);  // MISO
@@ -1170,13 +1179,13 @@ void MirrorLinkInit(void) {
   
   // Send ML_TIMESYNC
   // bit 0 to 26 = Unix Timestamp in minutes! not seconds
-  // bit 27 to 31 = cmd
+  // bit 27 to 31 = Not used
   MirrorLinkBuffCmd((uint8_t)ML_TIMESYNC, (uint32_t)(0x7FFFFFF & (RTC.get() / 60)));
 
   // Send ML_TIMEZONESYNC
   // Payload format:
   // bit 0 to 7 = Time zone
-  // bit 27 to 31 = cmd
+  // bit 27 to 31 = Not used
   MirrorLinkBuffCmd((uint8_t)ML_TIMEZONESYNC, (uint32_t)(0xFF & (os.iopts[IOPT_TIMEZONE])));
 
   // Send ML_LATITUDE and ML_LONGITUDE
@@ -1190,8 +1199,7 @@ void MirrorLinkInit(void) {
 
   // Payload format: 
   // bit 0 to 23 = longitude
-  // bit 24 to 26 = Not used
-  // bit 27 to 31 = cmd
+  // bit 24 to 31 = Not used
 
   // Encode negative longitude
   if (fp_lon < 0) {
@@ -1202,8 +1210,7 @@ void MirrorLinkInit(void) {
 
   // Payload format: 
   // bit 0 to 24 = latitude (bit 24 for sign)
-  // bit 25 to 26 = Not used
-  // bit 27 to 31 = cmd
+  // bit 25 to 31 = Not used
 
   // Encode negative latitude
   if (fp_lat < 0) {
