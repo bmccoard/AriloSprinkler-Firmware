@@ -25,7 +25,7 @@
 #if defined(ESP32) && defined(MIRRORLINK_ENABLE)
 
 // Special config defines
-#define DISABLE_ESP32_BROWNOUT
+//#define DISABLE_ESP32_BROWNOUT
 #define ENABLE_DEBUG_MIRRORLINK
 //#define ML_LOCALTEST
 #define MIRRORLINK_ENABLE_BLACKLIST                // If defined blacklist is enabled
