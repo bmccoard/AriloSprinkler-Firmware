@@ -32,7 +32,7 @@
 #define RADIOLIB_GODMODE
 
 // Config defines
-#define MIRRORLINK_BUFFERLENGTH             30     // Maximum command buffer length
+#define MIRRORLINK_BUFFERLENGTH             100    // Maximum command buffer length
 #define MIRRORLINK_LORA_MESSAGE_BYTE_LENGTH 8      // Length in bytes from the Lora messages
 #if defined(ML_LOCALTEST)
 #define MIRRORLINK_REGCOMMANDS_FAST_PERIOD  80     // Period in seconds to send the regular commands to remote station (fast)
@@ -91,7 +91,6 @@
 #define CHNUMBER_MASK                       0x3C000
 #define BOARDSEL_MASK                       0xF
 #define BOARDSTATUS_MASK                    0xFF
-
 
 // Speck64/128 encryption based on NSA implementation guide plus CTR cipher mode
 #define MIRRORLINK_SPECK_ROUNDS             27

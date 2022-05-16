@@ -107,7 +107,6 @@ struct MIRRORLINK {
   uint32_t nonceUpdateTimer;                                     // Timer to control the nonce update process
   uint32_t packetsSent;                                          // Number of sent packets
   uint32_t packetsReceived;                                      // Number of received packets
-  uint32_t response;                                             // Response from the station to the last command sent
   uint32_t txTime;                                               // Time used to transmit a payload in milliseconds
   uint32_t command[ML_CMD_MAX];                                  // Array containing 46 bit (14+32) bits of the command to be executed by the station
   int32_t latitude;                                              // Latitude of the remote station
@@ -130,7 +129,8 @@ struct MIRRORLINK {
   int8_t powerMax;                                               // Maximum allowed transmission power
   uint8_t boardSelected;                                         // Selected board to show status in the MirrorLink web page
   uint8_t boardStatusBits[MAX_NUM_BOARDS];                       // Status bits of the boards on the station acc. to last sync
-  uint8_t diagErrors;                                            // Diagnostic errors
+  uint8_t cmdErrors;                                             // Command errors errors
+  uint8_t diagBits;                                              // Diagnostic bits
   uint8_t nextChannel;                                           // Next channel to be used after a packet/response has been exchanged
   uint8_t assocRetryCtr;                                         // Association retry counter
   uint8_t lastCmd;                                               // Last command executed in a sequence
@@ -1110,7 +1110,8 @@ void MirrorLinkInit(void) {
   }
   MirrorLink.powerLevel = MirrorLink.powerMax;
   MirrorLink.boardSelected = 0;
-  MirrorLink.diagErrors = ML_NO_ERROR;
+  MirrorLink.cmdErrors = ML_NO_ERROR;
+  MirrorLink.diagBits = 0;
   for (uint8_t i; i < MAX_NUM_BOARDS; i++) MirrorLink.boardStatusBits[i] = 0;
 
 	MLDEBUG_BEGIN(115200);
@@ -1758,8 +1759,8 @@ void MirrorLinkState(void) {
           if (packetOk == true) {
             // Process header
             MirrorLink.responseCommand = (uint32_t)(decryptedBuffer[1] >> CMD_STATION_POS) & 0x3F;
-            MirrorLink.diagErrors = (uint32_t)(decryptedBuffer[1] >> APPERROR_STATION_POS) & 0xFF;
-            MirrorLink.response = (uint32_t)(decryptedBuffer[1] & PAYLOAD2_STATION_MASK);
+            MirrorLink.cmdErrors = (uint32_t)(decryptedBuffer[1] >> APPERROR_STATION_POS) & 0xFF;
+            MirrorLink.boardStatusBits[MirrorLink.boardSelected] = ((uint32_t)(decryptedBuffer[1] >> BOARDSTATUS_STATION_POS) & BOARDSTATUS_MASK);
             // Gather SNR and RSSI from station
             // Decode RSSI from 0.2 resolution in 8 bit (value range from -255dBm to 255dBm)
             MirrorLink.rssiRemote[MirrorLink.status.channelNumber] = (int16_t)(((decryptedBuffer[1] & RSSI_STATION_P2_MASK) >> RSSI_STATION_P2_POS) | ((decryptedBuffer[0] & RSSI_STATION_P1_MASK) << RSSI_STATION_P1_POS));
@@ -1789,13 +1790,12 @@ void MirrorLinkState(void) {
 
             // In case response shows a sync error between remote and station
             // delete all programs and reset response
-            if ((MirrorLink.diagErrors) == ML_SYNCERROR) {
+            if ((MirrorLink.cmdErrors) == ML_SYNCERROR) {
               delete_program_data(-1);
               MLDEBUG_PRINTLN(F("Sync error with remote, reset program data!"));
             }
 
             // Station status bit diagnostic
-            MirrorLink.boardStatusBits[MirrorLink.boardSelected] = ((MirrorLink.response >> BOARDSTATUS_STATION_POS) & BOARDSTATUS_MASK);
             MLDEBUG_PRINT(F("STATION Board: "));
             MLDEBUG_PRINTLN(MirrorLink.boardSelected);
             MLDEBUG_PRINT(F("STATION status bits: "));
@@ -1810,7 +1810,6 @@ void MirrorLinkState(void) {
             }
             
             MirrorLink.responseCommand = 0;
-            MirrorLink.response = 0;
             //MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_BUFFERING"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_BUFFERING;
@@ -1835,8 +1834,7 @@ void MirrorLinkState(void) {
             //   MirrorLink.bufferedCommands--;
             //   (MirrorLink.indexBufferTail++) % MIRRORLINK_BUFFERLENGTH;
             // }
-            
-            MirrorLink.response = 0;
+
             MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
             MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
             MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
@@ -1875,7 +1873,6 @@ void MirrorLinkState(void) {
           //  MirrorLink.indexBufferTail = ((MirrorLink.indexBufferTail + 1) % MIRRORLINK_BUFFERLENGTH);
           //}
           
-          MirrorLink.response = 0;
           MirrorLink.sendTimer = millis() + ((uint32_t)MIRRORLINK_RXTX_MAX_TIME * 1000);
           MLDEBUG_PRINTLN(F("STATE: MIRRORLINK_ASSOCIATE"));
           MirrorLink.status.mirrorlinkState = MIRRORLINK_ASSOCIATE;
@@ -1944,6 +1941,7 @@ void MirrorLinkState(void) {
               uint8_t command = 0;
               char * latitude;
               char * longitude;
+              MirrorLink.cmdErrors = ML_NO_ERROR;
               const float weight = 180./(1 << 23);
               if (MirrorLink.command[ML_CMD_1] != 0) {
                 command = (MirrorLink.command[ML_CMD_1] >> CMD_REMOTE_POS);
@@ -2012,7 +2010,7 @@ void MirrorLinkState(void) {
                         if (pid != pd.nprograms) {
                           // Delete all programs
                           delete_program_data(-1);
-                          MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
+                          MirrorLink.cmdErrors = ML_SYNCERROR;
                         }
                         // Otherwise create new program or modify existing one
                         else {
@@ -2044,7 +2042,7 @@ void MirrorLinkState(void) {
                           // Delete all programs
                           pd.eraseall();
                           //delete_program_data(-1);
-                          MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
+                          MirrorLink.cmdErrors = ML_SYNCERROR;
                         }
                         // Otherwise delete the program
                         else {
@@ -2081,7 +2079,7 @@ void MirrorLinkState(void) {
                       if (MirrorLink.maxProgrNum != pd.nprograms) {
                         // Delete all programs
                         delete_program_data(-1);
-                        MirrorLink.command[ML_CMD_2] |= (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS);
+                        MirrorLink.cmdErrors = ML_SYNCERROR;
                       }
                       // Reset MirrorLinkProg
                       mirrorlinkProg.enabled = 0;
@@ -2606,7 +2604,7 @@ void MirrorLinkWork(void) {
           MLDEBUG_PRINTLN(F(""));
 
           // Process payload
-          plainBuffer[1] = (((uint32_t)(rssi & 0xFF) << RSSI_STATION_P2_POS) | ((uint32_t)(MirrorLink.command[ML_CMD_2] & 0x3F00FFFF)) | ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & BOARDSTATUS_MASK) << BOARDSTATUS_STATION_POS));
+          plainBuffer[1] = (((uint32_t)(rssi & 0xFF) << RSSI_STATION_P2_POS) | ((uint32_t)(MirrorLink.command[ML_CMD_2] & 0x3F000000)) | (((uint32_t)ML_SYNCERROR) << APPERROR_STATION_POS) | ((MirrorLink.boardStatusBits[MirrorLink.boardSelected] & BOARDSTATUS_MASK) << BOARDSTATUS_STATION_POS));
           MirrorLink.command[ML_CMD_1] = 0;
           MirrorLink.command[ML_CMD_2] = 0;
 
